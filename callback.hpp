@@ -219,7 +219,7 @@ namespace util
       }
 
       template <typename R, typename O, typename F, std::size_t... I>
-      static callback_ret<R> do_invoke_expand(O&& that, F&& f, std::tuple<Args...>& args, index_sequence<I...>)
+      static callback_ret<R> do_invoke_expand(O&& that, F&& f, std::tuple<Args...>&& args, index_sequence<I...>)
       {
         using ::util::to_address;
         using raw_address_t = decltype(to_address(std::forward<O>(that)));
@@ -227,9 +227,9 @@ namespace util
       }
 
       template <typename R, typename O, typename F>
-      static callback_ret<R> do_invoke(O&& that, F&& f, std::tuple<Args...>& args)
+      static callback_ret<R> do_invoke(O&& that, F&& f, std::tuple<Args...>&& args)
       {
-        return do_invoke_expand<R>(std::forward<O>(that), std::forward<F>(f), args, make_index_sequence<sizeof...(Args)>{});
+        return do_invoke_expand<R>(std::forward<O>(that), std::forward<F>(f), std::move(args), make_index_sequence<sizeof...(Args)>{});
       }
     };
 
@@ -399,7 +399,7 @@ namespace util
 
           if (auto i = acquire_lock(static_cast<const pointer_base&>(*this)))
           {
-            return callback_helper<Args...>::template do_invoke<R>(std::forward<decltype(i)>(i), f, op.args);
+            return callback_helper<Args...>::template do_invoke<R>(std::forward<decltype(i)>(i), f, std::move(op.args));
           }
           else
           {
