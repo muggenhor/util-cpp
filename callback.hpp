@@ -57,6 +57,9 @@ namespace util
 
   void to_address(bool) {}
 
+  template <typename FunctionSignature>
+  class callback;
+
   namespace detail
   {
     template <typename...>
@@ -93,6 +96,15 @@ namespace util
         : index_sequence<I...> 
     {};
 
+    template <typename>
+    struct is_callback_impl : std::false_type {};
+
+    template <typename FunctionSignature>
+    struct is_callback_impl<callback<FunctionSignature>> : std::true_type {};
+
+    template <typename T>
+    using is_callback = is_callback_impl<typename std::decay<T>::type>;
+
     template <typename R>
     struct callbackret_s
     {
@@ -124,10 +136,19 @@ namespace util
     struct ret_invoke_helper
     {
       template <typename F, typename... Args>
-      typename std::enable_if<is_callable<F, Args...>::value, callback_ret<R>>::type
+      typename std::enable_if<is_callable<F, Args...>::value && !is_callback<F>::value, callback_ret<R>>::type
       static do_invoke(F&& f, Args&&... args)
       {
         return static_cast<R>(std::forward<F>(f)(std::forward<Args>(args)...));
+      }
+
+      template <typename F, typename... Args>
+      typename std::enable_if<is_callable<F, Args...>::value && is_callback<F>::value, callback_ret<R>>::type
+      static do_invoke(F&& f, Args&&... args)
+      {
+        if (auto r = std::forward<F>(f)(std::forward<Args>(args)...))
+          return r;
+        return empty_callback_ret<R>();
       }
 
       template <typename O, typename F, typename... Args>
@@ -157,10 +178,17 @@ namespace util
       using R = void;
 
       template <typename F, typename... Args>
-      typename std::enable_if<is_callable<F, Args...>::value, callback_ret<R>>::type
+      typename std::enable_if<is_callable<F, Args...>::value && !is_callback<F>::value, callback_ret<R>>::type
       static do_invoke(F&& f, Args&&... args)
       {
         return (std::forward<F>(f)(std::forward<Args>(args)...), true);
+      }
+
+      template <typename F, typename... Args>
+      typename std::enable_if<is_callable<F, Args...>::value && is_callback<F>::value, callback_ret<R>>::type
+      static do_invoke(F&& f, Args&&... args)
+      {
+        return static_cast<bool>(std::forward<F>(f)(std::forward<Args>(args)...));
       }
 
       template <typename O, typename F, typename... Args>
@@ -390,9 +418,6 @@ namespace util
         }
     };
   }
-
-  template <typename FunctionSignature>
-  class callback;
 
   template <typename R, typename... Args>
   class callback<R(Args...)>
