@@ -49,6 +49,14 @@ namespace util
     return p;
   }
 
+  template <typename T>
+  auto to_address(T p) -> decltype(&*p)
+  {
+    return &*p;
+  }
+
+  void to_address(bool) {}
+
   namespace detail
   {
     template <typename...>
@@ -88,6 +96,13 @@ namespace util
     template <typename... Args>
     struct callback_helper
     {
+      template <typename R, typename F>
+      typename std::enable_if<is_callable<F, Args...>::value, R>::type
+      static do_invoke_impl(F&& f, Args... args)
+      {
+        return static_cast<R>(std::forward<F>(f)(std::forward<Args>(args)...));
+      }
+
       template <typename R, typename O, typename F>
       typename std::enable_if<is_callable<F, Args...>::value, R>::type
       static do_invoke_impl(O&&, F&& f, Args... args)
@@ -108,10 +123,27 @@ namespace util
         return static_cast<R>((that->*f)(std::forward<Args>(args)...));
       }
 
+      template <typename R, typename RawAddress, typename O, typename F>
+      typename std::enable_if<!std::is_same<RawAddress, void>::value, R>::type
+      static do_invoke_dereference(O&& that, F&& f, Args... args)
+      {
+        using ::util::to_address;
+        return do_invoke_impl<R>(to_address(std::forward<O>(that)), std::forward<F>(f), std::forward<Args>(args)...);
+      }
+
+      template <typename R, typename RawAddress, typename O, typename F>
+      typename std::enable_if<std::is_same<RawAddress, void>::value, R>::type
+      static do_invoke_dereference(O&&, F&& f, Args... args)
+      {
+        return do_invoke_impl<R>(std::forward<F>(f), std::forward<Args>(args)...);
+      }
+
       template <typename R, typename O, typename F, std::size_t... I>
       static R do_invoke_expand(O&& that, F&& f, std::tuple<Args...>& args, index_sequence<I...>)
       {
-        return do_invoke_impl<R>(std::forward<O>(that), std::forward<F>(f), std::get<I>(std::move(args))...);
+        using ::util::to_address;
+        using raw_address_t = decltype(to_address(std::forward<O>(that)));
+        return do_invoke_dereference<R, raw_address_t>(std::forward<O>(that), std::forward<F>(f), std::get<I>(std::move(args))...);
       }
 
       template <typename R, typename O, typename F>
@@ -122,9 +154,9 @@ namespace util
     };
 
     struct always_valid_ptr {};
-    inline const always_valid_ptr* acquire_lock(const always_valid_ptr& o)
+    inline constexpr bool acquire_lock(const always_valid_ptr&)
     {
-      return &o;
+      return true;
     }
 
     template <typename R, typename... Args>
@@ -273,7 +305,7 @@ namespace util
           using ::util::acquire_lock;
           if (auto i = acquire_lock(static_cast<const base_t&>(*this)))
           {
-            return callback_helper<Args...>::template do_invoke<R>(&*i, f, args);
+            return callback_helper<Args...>::template do_invoke<R>(std::forward<decltype(i)>(i), f, args);
           }
           else
           {
