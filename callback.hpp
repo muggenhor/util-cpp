@@ -43,6 +43,12 @@ namespace util
     return p.lock();
   }
 
+  template <typename T>
+  T* acquire_lock(T* p)
+  {
+    return p;
+  }
+
   namespace detail
   {
     template <typename...>
@@ -211,13 +217,52 @@ namespace util
       return callback_invoker_helper<R, Args...>::invoke(that, std::forward<Args>(args)...);
     }
 
+    template <typename T>
+    struct pointer_wrapper
+    {
+    public:
+      constexpr pointer_wrapper(T p) : pointer(p) {}
+
+      constexpr operator const T&() const
+      {
+        return pointer;
+      }
+
+    private:
+      T pointer;
+    };
+
+    template <typename T>
+    T acquire_lock(const pointer_wrapper<T>& p)
+    {
+      using ::util::acquire_lock;
+      return acquire_lock(static_cast<const T&>(p));
+    }
+
+    template <typename T>
+    struct wrap_pointer
+    {
+      using type = T;
+    };
+
+    template <typename T>
+    struct wrap_pointer<T*>
+    {
+      using type = pointer_wrapper<T*>;
+    };
+
+    template <typename T>
+    using wrap_pointer_t = typename wrap_pointer<T>::type;
+
     template <typename LockablePtr, typename F, typename R, typename... Args>
     class callback_impl final : // inherit for empty-base optimisation
-                                 private LockablePtr
+                                 private wrap_pointer_t<LockablePtr>
     {
       public:
+        using base_t = wrap_pointer_t<LockablePtr>;
+
         callback_impl(LockablePtr p, F f)
-          : LockablePtr(std::forward<LockablePtr>(p))
+          : base_t(std::forward<LockablePtr>(p))
           , f(std::forward<F>(f))
         {}
 
@@ -226,7 +271,7 @@ namespace util
         callback_ret<R> operator()(std::tuple<Args...>& args) const
         {
           using ::util::acquire_lock;
-          if (auto i = acquire_lock(static_cast<const LockablePtr&>(*this)))
+          if (auto i = acquire_lock(static_cast<const base_t&>(*this)))
           {
             return callback_helper<Args...>::template do_invoke<R>(&*i, f, args);
           }
@@ -239,7 +284,7 @@ namespace util
         callback_ret<R> operator()(bool& is_valid) const noexcept
         {
           using ::util::acquire_lock;
-          is_valid = static_cast<bool>(f) && static_cast<bool>(acquire_lock(static_cast<const LockablePtr&>(*this)));
+          is_valid = static_cast<bool>(f) && static_cast<bool>(acquire_lock(static_cast<const base_t&>(*this)));
           return empty_callback_ret<R>();
         }
 
@@ -325,7 +370,7 @@ namespace util
       template <typename LockablePtr, typename F>
       callback(LockablePtr p, F f
           , typename std::enable_if<!std::is_same<F, callback>::value &&
-              (std::is_convertible<typename std::result_of<F(typename LockablePtr::element_type*, Args...)>::type, R>::value
+              (std::is_convertible<typename std::result_of<F(typename std::pointer_traits<LockablePtr>::element_type*, Args...)>::type, R>::value
             || std::is_void<R>::value)
             >::type* = nullptr)
         : impl([&p, &f] {
