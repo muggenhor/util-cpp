@@ -245,12 +245,39 @@ namespace util
     template <typename R, typename... Args>
     using callback_ptr = std::unique_ptr<void, detail::callback_deleter<R, Args...>>; 
 
+    template <typename... Args>
+    struct callback_tag_invoke
+    {
+      explicit constexpr callback_tag_invoke(Args... args)
+          noexcept(noexcept(std::tuple<Args...>(std::forward<Args>(args)...)))
+        : args(std::forward<Args>(args)...)
+      {
+      }
+
+      std::tuple<Args...> args;
+    };
+
+    struct callback_tag_is_valid
+    {
+      explicit constexpr callback_tag_is_valid(bool& r) noexcept : ret(r) {}
+      bool& ret;
+    };
+
+    template <typename R, typename... Args>
+    struct callback_tag_clone
+    {
+      explicit constexpr callback_tag_clone(callback_ptr<R, Args...>& dst) noexcept : dst(dst) {}
+      callback_ptr<R, Args...>& dst;
+    };
+
+    struct callback_tag_delete {};
+
     template <typename R, typename... Args>
     using callback_method = boost::variant<
-        std::tuple<Args...>           // invoke
-      , bool&                         // is_valid
-      , callback_ptr<R, Args...>&     // clone
-      , callback_deleter<R, Args...>  // delete
+        callback_tag_invoke<Args...>
+      , callback_tag_is_valid
+      , callback_tag_clone<R, Args...>
+      , callback_tag_delete
       >;
 
     template <typename R, typename... Args>
@@ -268,7 +295,7 @@ namespace util
       // deleter
       void operator()(void* p) const
       {
-        invoke_method(p, *this);
+        invoke_method(p, callback_tag_delete{});
       }
 
       callback_ret<R> invoke_method(void* that, callback_method<R, Args...>&& call) const
@@ -364,7 +391,7 @@ namespace util
 
         using result_type = callback_ret<R>;
 
-        callback_ret<R> operator()(std::tuple<Args...>& args)
+        callback_ret<R> operator()(detail::callback_tag_invoke<Args...>& op)
         {
           using ::util::acquire_lock;
 
@@ -372,7 +399,7 @@ namespace util
 
           if (auto i = acquire_lock(static_cast<const pointer_base&>(*this)))
           {
-            return callback_helper<Args...>::template do_invoke<R>(std::forward<decltype(i)>(i), f, args);
+            return callback_helper<Args...>::template do_invoke<R>(std::forward<decltype(i)>(i), f, op.args);
           }
           else
           {
@@ -380,21 +407,21 @@ namespace util
           }
         }
 
-        callback_ret<R> operator()(bool& is_valid) const noexcept
+        callback_ret<R> operator()(const callback_tag_is_valid& op) const noexcept
         {
           using ::util::acquire_lock;
           const F& f = *this;
-          is_valid = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const pointer_base&>(*this)));
+          op.ret = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const pointer_base&>(*this)));
           return {};
         }
 
-        callback_ret<R> operator()(callback_ptr<R, Args...>& clone) const
+        callback_ret<R> operator()(const callback_tag_clone<R, Args...>& op) const
         {
-          clone = { new callback_impl(*this), { &invoke_method } };
+          op.dst = { new callback_impl(*this), { &invoke_method } };
           return {};
         }
 
-        callback_ret<R> operator()(const callback_deleter<R, Args...>&) const
+        callback_ret<R> operator()(const callback_tag_delete&) const
         {
           delete this;
           return {};
@@ -422,7 +449,7 @@ namespace util
         : impl([&other] {
             pointer ptr{nullptr, {nullptr}};
             if (other.impl)
-              other.impl.get_deleter().invoke_method(other.impl.get(), ptr);
+              other.impl.get_deleter().invoke_method(other.impl.get(), detail::callback_tag_clone<R, Args...>{ptr});
             return ptr;
           }())
       {
@@ -499,13 +526,13 @@ namespace util
       {
         bool is_valid = false;
         if (impl)
-          impl.get_deleter().invoke_method(impl.get(), is_valid);
+          impl.get_deleter().invoke_method(impl.get(), detail::callback_tag_is_valid{is_valid});
         return is_valid;
       }
 
       detail::callback_ret<R> operator()(Args... args) const
       {
-        return impl.get_deleter().invoke_method(impl.get(), std::tuple<Args...>(std::forward<Args>(args)...));
+        return impl.get_deleter().invoke_method(impl.get(), detail::callback_tag_invoke<Args...>{std::forward<Args>(args)...});
       }
 
     private:
