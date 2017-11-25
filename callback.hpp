@@ -387,7 +387,7 @@ namespace util
            (std::is_convertible<typename std::result_of<F(Args...)>::type, R>::value
          || std::is_void<R>::value)
          >::type>
-      callback(LockablePtr p, F f)
+      callback(F f, LockablePtr p)
         : impl([&p, &f] {
             using impl_t = detail::callback_impl<LockablePtr, F, R, Args...>;
             return pointer{
@@ -400,7 +400,7 @@ namespace util
       }
 
       template <typename LockablePtr, typename F>
-      callback(LockablePtr p, F f
+      callback(F f, LockablePtr p
           , typename std::enable_if<!std::is_same<F, callback>::value &&
               (std::is_convertible<typename std::result_of<F(typename std::pointer_traits<LockablePtr>::element_type*, Args...)>::type, R>::value
             || std::is_void<R>::value)
