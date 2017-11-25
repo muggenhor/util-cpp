@@ -372,7 +372,7 @@ namespace util
                                  private wrap_pointer_t<LockablePtr>
                                , private ebo_t<F>
     {
-      public:
+      private:
         using pointer_base = wrap_pointer_t<LockablePtr>;
         using functor_base = ebo_t<F>;
 
@@ -381,13 +381,15 @@ namespace util
           , functor_base(std::forward<F>(f))
         {}
 
+      public: // for boost::apply_visitor only
         using result_type = callback_ret<R>;
 
-        callback_ret<R> operator()(detail::callback_tag_invoke<Args...>& op)
+        callback_ret<R> operator()(detail::callback_tag_invoke<Args...>& op) const
         {
           using ::util::acquire_lock;
 
-          F& f = *this;
+          // Casting away constness because 'mutable' isn't an option with the empty base optimization
+          F& f = const_cast<callback_impl&>(*this);
 
           if (auto i = acquire_lock(static_cast<const pointer_base&>(*this)))
           {
@@ -407,7 +409,7 @@ namespace util
           return {};
         }
 
-        callback_ret<R> operator()(const callback_tag_move& op) noexcept
+        callback_ret<R> operator()(const callback_tag_move& op) const noexcept
         {
           void* const dp = &op.dst;
 
@@ -448,6 +450,7 @@ namespace util
           return {};
         }
 
+      private:
         static callback_ret<R> invoke_method(const storage_t& s, callback_method<Args...>&& call)
         {
           const void* const ip = &s;
@@ -456,9 +459,10 @@ namespace util
             : *static_cast<const callback_impl* const *>(ip)
             ;
 
-          return boost::apply_visitor(const_cast<callback_impl&>(*that), call);
+          return boost::apply_visitor(*that, call);
         }
 
+      public:
         static callback_method_invoker<R, Args...> construct(storage_t& s, LockablePtr p, F f)
         {
           void* const dp = &s;
