@@ -31,6 +31,18 @@
 
 namespace util
 {
+  template <typename T>
+  const std::shared_ptr<T>& acquire_lock(const std::shared_ptr<T>& p)
+  {
+    return p;
+  }
+
+  template <typename T>
+  std::shared_ptr<T> acquire_lock(const std::weak_ptr<T>& p)
+  {
+    return p.lock();
+  }
+
   namespace detail
   {
     template <typename...>
@@ -103,13 +115,11 @@ namespace util
       }
     };
 
-    struct always_valid_ptr
+    struct always_valid_ptr {};
+    inline const always_valid_ptr* acquire_lock(const always_valid_ptr& o)
     {
-      constexpr const always_valid_ptr* lock() const noexcept
-      {
-        return this;
-      }
-    };
+      return &o;
+    }
 
     template <typename R, typename... Args>
     struct callback_deleter;
@@ -154,6 +164,7 @@ namespace util
     template <typename R, typename... Args>
     using callback_method_invoker = callback_ret<R> (*)(const void* that, callback_method<R, Args...>&& call);
 
+    // Functions as deleter for unique_ptr and simultaneously as dispatcher to the type-erased callback implementation
     template <typename R, typename... Args>
     struct callback_deleter
     {
@@ -214,7 +225,8 @@ namespace util
 
         callback_ret<R> operator()(std::tuple<Args...>& args) const
         {
-          if (auto i = LockablePtr::lock())
+          using ::util::acquire_lock;
+          if (auto i = acquire_lock(static_cast<const LockablePtr&>(*this)))
           {
             return callback_helper<Args...>::template do_invoke<R>(&*i, f, args);
           }
@@ -226,7 +238,8 @@ namespace util
 
         callback_ret<R> operator()(bool& is_valid) const noexcept
         {
-          is_valid = static_cast<bool>(LockablePtr::lock()) && static_cast<bool>(f);
+          using ::util::acquire_lock;
+          is_valid = static_cast<bool>(f) && static_cast<bool>(acquire_lock(static_cast<const LockablePtr&>(*this)));
           return empty_callback_ret<R>();
         }
 
@@ -301,7 +314,7 @@ namespace util
         : impl([&p, &f] {
             using impl_t = detail::callback_impl<LockablePtr, F, R, Args...>;
             return pointer{
-                p.lock()
+                acquire_lock(p)
                   ? new impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)}
                   : nullptr
                   , deleter{&impl_t::invoke_method}};
@@ -318,7 +331,7 @@ namespace util
         : impl([&p, &f] {
             using impl_t = detail::callback_impl<LockablePtr, F, R, Args...>;
             return pointer{
-                p.lock()
+                acquire_lock(p)
                   ? new impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)}
                   : nullptr
                   , deleter{&impl_t::invoke_method}};
