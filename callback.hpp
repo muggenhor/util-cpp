@@ -402,11 +402,11 @@ namespace util
       callback(callback&& other) noexcept = default;
 
       template <typename F
-        , typename = typename std::enable_if<!std::is_same<F, callback>::value>::type
         , typename = typename std::enable_if<
-            std::is_convertible<typename std::result_of<F(Args...)>::type, R>::value
-         || std::is_void<R>::value
-         >::type>
+           !std::is_same<typename std::decay<F>::type, callback>::value // prevent use of type-erasure instead of copy construction
+            && (std::is_convertible<typename std::result_of<F(Args...)>::type, R>::value
+             || std::is_void<R>::value
+         )>::type>
       callback(F f)
         : impl([&f] {
             using impl_t = detail::callback_impl<detail::always_valid_ptr, F, R, Args...>;
