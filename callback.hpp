@@ -605,7 +605,14 @@ namespace util
 
 #ifdef TEST
 #include <cassert>
-#include <iostream>
+
+struct U {};
+static_assert(std::is_empty<util::detail::callback_impl<util::detail::always_valid_ptr, U, void, void*>>::value, "");
+static_assert(sizeof(util::detail::callback_impl<util::detail::always_valid_ptr, void (*)(void*), void, void*>) == sizeof(void*) * 1, "");
+static_assert(sizeof(util::detail::callback_impl<void*                   , void (*)(void*), void, void*>) == sizeof(void*) * 2, "");
+static_assert(sizeof(util::detail::callback_impl<std::weak_ptr<void>     , void (*)(void*), void, void*>) == sizeof(void*) * 3, "");
+static_assert(sizeof(util::detail::callback_impl<U*                      , void (U::*)(), void>) == sizeof(void*) * 3, "");
+static_assert(sizeof(util::detail::callback_impl<std::weak_ptr<U   >     , void (U::*)(), void>) == sizeof(void*) * 4, "");
 
 namespace
 {
@@ -614,6 +621,12 @@ namespace
   struct S
   {
     int operator()(int, char) const { return 1; }
+    int f(int, char) const { return 2; }
+  };
+
+  struct Z
+  {
+    int operator()(int&& a, char) { ++a; return 1; }
   };
 }
 
@@ -625,6 +638,32 @@ int main()
   callback<void (int, char)> x(some_f);
   callback<void (int, char)> y{x};
   callback<void (int, char)> z{std::move(x)};
+
+  {
+    auto s = std::make_shared<S>();
+    callback<int (int&&, char&&)> v[] {
+      {Z{}},
+      {&S::f, std::weak_ptr<S>(s)},
+      {&S::f, std::make_shared<S>()},
+      {S{}},
+    };
+
+    using std::begin;
+    using std::end;
+
+    int a = 7;
+    char b = 'z';
+    const auto predicate = [&a, &b](const callback<int (int&&, char&&)>& c) {
+        return !c(std::move(a), std::move(b));
+      };
+    const auto first = begin(v);
+    auto last = end(v);
+    last = std::remove_if(first, last, predicate);
+    a = 14;
+    b = 'y';
+    s.reset();
+    last = std::remove_if(first, last, predicate);
+  }
 
   w(0, 'a');
   y(1, 'b');
