@@ -412,15 +412,18 @@ namespace util
         callback_ret<R> operator()(const callback_tag_move& op) const noexcept
         {
           void* const dp = &op.dst;
+          void* const sp = &op.src;
+          assert(sp != dp && "move constructing to the same address is illegal!");
 
           if (callback_stored_internally<callback_impl, storage_t>::value)
           {
+            assert(sp == this && "move constructor doesn't apply to this type!");
+
             ::new (dp) callback_impl{std::move(*this)};
+            this->~callback_impl();
           }
           else
           {
-            void* const sp = &op.src;
-            assert(sp != dp && "move constructing to the same address is illegal!");
             auto** const spp = static_cast<callback_impl**>(sp);
             assert(*spp == this && "move constructor doesn't apply to this type!");
 
