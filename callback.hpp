@@ -121,18 +121,6 @@ namespace util
     using callback_ret = typename callbackret_s<R>::type;
 
     template <typename R>
-    callback_ret<R> empty_callback_ret()
-    {
-      return {};
-    }
-
-    template <>
-    bool empty_callback_ret<void>()
-    {
-      return false;
-    }
-
-    template <typename R>
     struct ret_invoke_helper
     {
       template <typename F, typename... Args>
@@ -148,7 +136,7 @@ namespace util
       {
         if (auto r = std::forward<F>(f)(std::forward<Args>(args)...))
           return r;
-        return empty_callback_ret<R>();
+        return {};
       }
 
       template <typename O, typename F, typename... Args>
@@ -388,7 +376,7 @@ namespace util
           }
           else
           {
-            return empty_callback_ret<R>();
+            return {};
           }
         }
 
@@ -397,19 +385,19 @@ namespace util
           using ::util::acquire_lock;
           const F& f = *this;
           is_valid = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const pointer_base&>(*this)));
-          return empty_callback_ret<R>();
+          return {};
         }
 
         callback_ret<R> operator()(callback_ptr<R, Args...>& clone) const
         {
           clone = { new callback_impl(*this), { &invoke_method } };
-          return empty_callback_ret<R>();
+          return {};
         }
 
         callback_ret<R> operator()(const callback_deleter<R, Args...>&) const
         {
           delete this;
-          return empty_callback_ret<R>();
+          return {};
         }
 
         static callback_ret<R> invoke_method(void* that, callback_method<R, Args...>&& call)
