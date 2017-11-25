@@ -25,6 +25,7 @@
 #include <cassert>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -602,10 +603,28 @@ namespace util
       detail::callback_method_invoker<R, Args...> invoker = nullptr;
       detail::storage_t                           storage;
   };
+
+  template <typename ForwardRange, typename... Args>
+  void emit_all(ForwardRange& callbacks, Args... args)
+  {
+    using std::begin;
+    using std::end;
+
+    using iterator = decltype(begin(callbacks));
+    using reference = typename std::iterator_traits<iterator>::reference;
+
+    callbacks.erase(
+        std::remove_if(begin(callbacks), end(callbacks),
+          [&](reference cb) {
+            return !cb(std::forward<Args>(args)...);
+          })
+      , end(callbacks)
+      );
+  }
 }
 
 #ifdef TEST
-#include <cassert>
+#include <vector>
 
 struct U {};
 static_assert(std::is_empty<util::detail::callback_impl<util::detail::always_valid_ptr, U, void, void*>>::value, "");
@@ -642,28 +661,16 @@ int main()
 
   {
     auto s = std::make_shared<S>();
-    callback<int (int&&, char&&)> v[] {
+    std::vector<callback<int (int&&, char&&)>> v {
       {Z{}},
       {&S::f, std::weak_ptr<S>(s)},
       {&S::f, std::make_shared<S>()},
       {S{}},
     };
 
-    using std::begin;
-    using std::end;
-
-    int a = 7;
-    char b = 'z';
-    const auto predicate = [&a, &b](const callback<int (int&&, char&&)>& c) {
-        return !c(std::move(a), std::move(b));
-      };
-    const auto first = begin(v);
-    auto last = end(v);
-    last = std::remove_if(first, last, predicate);
-    a = 14;
-    b = 'y';
+    emit_all(v, 7, 'z');
     s.reset();
-    last = std::remove_if(first, last, predicate);
+    emit_all(v, 14, 'y');
   }
 
   w(0, 'a');
