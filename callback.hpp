@@ -239,11 +239,10 @@ namespace util
       return true;
     }
 
-    template <typename R, typename... Args>
-    struct callback_deleter;
-
-    template <typename R, typename... Args>
-    using callback_ptr = std::unique_ptr<void, detail::callback_deleter<R, Args...>>; 
+    using storage_t = std::aligned_storage<
+        sizeof(void (always_valid_ptr::*)()) + sizeof(std::weak_ptr<void>)
+      , alignof(std::weak_ptr<void>)
+      >::type;
 
     template <typename... Args>
     struct callback_tag_invoke
@@ -263,50 +262,32 @@ namespace util
       bool& ret;
     };
 
-    template <typename R, typename... Args>
     struct callback_tag_clone
     {
-      explicit constexpr callback_tag_clone(callback_ptr<R, Args...>& dst) noexcept : dst(dst) {}
-      callback_ptr<R, Args...>& dst;
+      explicit constexpr callback_tag_clone(storage_t& dst) noexcept : dst(dst) {}
+      storage_t& dst;
+    };
+
+    struct callback_tag_move
+    {
+      explicit constexpr callback_tag_move(storage_t&& src, storage_t& dst) noexcept : src(std::move(src)), dst(dst) {}
+      storage_t&& src;
+      storage_t& dst;
     };
 
     struct callback_tag_delete {};
 
-    template <typename R, typename... Args>
+    template <typename... Args>
     using callback_method = boost::variant<
         callback_tag_invoke<Args...>
       , callback_tag_is_valid
-      , callback_tag_clone<R, Args...>
+      , callback_tag_move
+      , callback_tag_clone
       , callback_tag_delete
       >;
 
     template <typename R, typename... Args>
-    using callback_method_invoker = callback_ret<R> (*)(void* that, callback_method<R, Args...>&& call);
-
-    // Functions as deleter for unique_ptr and simultaneously as dispatcher to the type-erased callback implementation
-    template <typename R, typename... Args>
-    struct callback_deleter
-    {
-      constexpr callback_deleter(callback_method_invoker<R, Args...> invoker) noexcept
-        : invoker(invoker)
-      {
-      }
-
-      // deleter
-      void operator()(void* p) const
-      {
-        invoke_method(p, callback_tag_delete{});
-      }
-
-      callback_ret<R> invoke_method(void* that, callback_method<R, Args...>&& call) const
-      {
-        if (!that)
-          throw std::bad_function_call();
-        return this->invoker(that, std::move(call));
-      }
-
-      callback_method_invoker<R, Args...> invoker;
-    };
+    using callback_method_invoker = callback_ret<R> (*)(const storage_t& that, callback_method<Args...>&& call);
 
     template <typename T>
     struct non_ebo_wrapper
@@ -375,6 +356,17 @@ namespace util
       return true;
     }
 
+    template <typename T, typename Storage>
+    struct callback_stored_internally
+    {
+      static constexpr const bool value = true
+        &&  sizeof (T)      <= sizeof(Storage)
+        && (alignof(Storage) % alignof(T)) == 0
+        // force external storage (tracked via ptr) if the contained type isn't noexcept movable
+        && noexcept(T{std::declval<T>()})
+        ;
+    };
+
     template <typename LockablePtr, typename F, typename R, typename... Args>
     class callback_impl final : // inherit for empty-base optimisation
                                  private wrap_pointer_t<LockablePtr>
@@ -415,21 +407,67 @@ namespace util
           return {};
         }
 
-        callback_ret<R> operator()(const callback_tag_clone<R, Args...>& op) const
+        callback_ret<R> operator()(const callback_tag_move& op) noexcept
         {
-          op.dst = { new callback_impl(*this), { &invoke_method } };
+          void* const dp = &op.dst;
+
+          if (callback_stored_internally<callback_impl, storage_t>::value)
+          {
+            ::new (dp) callback_impl{std::move(*this)};
+          }
+          else
+          {
+            void* const sp = &op.src;
+            assert(sp != dp && "move constructing to the same address is illegal!");
+            auto** const spp = static_cast<callback_impl**>(sp);
+            assert(*spp == this && "move constructor doesn't apply to this type!");
+
+            *static_cast<callback_impl**>(dp) = *spp;
+            *spp = nullptr;
+          }
+          return {};
+        }
+
+        callback_ret<R> operator()(const callback_tag_clone& op) const
+        {
+          void* const dp = &op.dst;
+
+          if (callback_stored_internally<callback_impl, storage_t>::value)
+            ::new (dp) callback_impl{*this};
+          else
+            *static_cast<callback_impl**>(dp) = new callback_impl{*this};
           return {};
         }
 
         callback_ret<R> operator()(const callback_tag_delete&) const
         {
-          delete this;
+          if (callback_stored_internally<callback_impl, storage_t>::value)
+            this->~callback_impl();
+          else
+            delete this;
           return {};
         }
 
-        static callback_ret<R> invoke_method(void* that, callback_method<R, Args...>&& call)
+        static callback_ret<R> invoke_method(const storage_t& s, callback_method<Args...>&& call)
         {
-          return boost::apply_visitor(*static_cast<callback_impl*>(that), call);
+          const void* const ip = &s;
+          auto* const that = callback_stored_internally<callback_impl, storage_t>::value
+            ? static_cast<const callback_impl*>(ip)
+            : *static_cast<const callback_impl* const *>(ip)
+            ;
+
+          return boost::apply_visitor(const_cast<callback_impl&>(*that), call);
+        }
+
+        static callback_method_invoker<R, Args...> construct(storage_t& s, LockablePtr p, F f)
+        {
+          void* const dp = &s;
+
+          if (callback_stored_internally<callback_impl, storage_t>::value)
+            ::new (dp) callback_impl{std::forward<LockablePtr>(p), std::forward<F>(f)};
+          else
+            *static_cast<callback_impl**>(dp) = new callback_impl{std::forward<LockablePtr>(p), std::forward<F>(f)};
+          return invoke_method;
         }
     };
   }
@@ -437,25 +475,36 @@ namespace util
   template <typename R, typename... Args>
   class callback<R(Args...)>
   {
-    private:
-      using deleter = detail::callback_deleter<R, Args...>;
-      using pointer = detail::callback_ptr<R, Args...>;
-
     public:
       constexpr callback() noexcept = default;
       constexpr callback(std::nullptr_t) noexcept {}
 
       callback(const callback& other)
-        : impl([&other] {
-            pointer ptr{nullptr, {nullptr}};
-            if (other.impl)
-              other.impl.get_deleter().invoke_method(other.impl.get(), detail::callback_tag_clone<R, Args...>{ptr});
-            return ptr;
+        : invoker([&] {
+            if (other.invoker)
+              other.invoker(other.storage, detail::callback_tag_clone{storage});
+            return other.invoker;
           }())
       {
       }
 
-      callback(callback&& other) noexcept = default;
+      callback(callback&& other) noexcept
+        : invoker([&] {
+            auto invoke = other.invoker;
+            if (invoke)
+            {
+              invoke(other.storage, detail::callback_tag_move{std::move(other.storage), storage});
+              other.invoker = nullptr;
+            }
+            return invoke;
+          }())
+      {
+      }
+
+      ~callback() noexcept
+      {
+        *this = nullptr;
+      }
 
       template <typename F
         , typename = typename std::enable_if<
@@ -464,9 +513,9 @@ namespace util
              || std::is_void<R>::value
          )>::type>
       callback(F f)
-        : impl([&f] {
+        : invoker([&] {
             using impl_t = detail::callback_impl<detail::always_valid_ptr, F, R, Args...>;
-            return pointer{new impl_t{{}, std::forward<F>(f)}, deleter{&impl_t::invoke_method}};
+            return impl_t::construct(storage, {}, std::forward<F>(f));
           }())
       {
       }
@@ -477,13 +526,12 @@ namespace util
          || std::is_void<R>::value)
          >::type>
       callback(F f, LockablePtr p)
-        : impl([&p, &f] {
+        : invoker([&] {
             using impl_t = detail::callback_impl<LockablePtr, F, R, Args...>;
-            return pointer{
-                acquire_lock(p)
-                  ? new impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)}
-                  : nullptr
-                  , deleter{&impl_t::invoke_method}};
+            return acquire_lock(p)
+                ? impl_t::construct(storage, std::forward<LockablePtr>(p), std::forward<F>(f))
+                : nullptr
+                ;
           }())
       {
       }
@@ -494,49 +542,57 @@ namespace util
               (std::is_convertible<typename std::result_of<F(typename std::pointer_traits<LockablePtr>::element_type*, Args...)>::type, R>::value
             || std::is_void<R>::value)
             >::type* = nullptr)
-        : impl([&p, &f] {
+        : invoker([&] {
             using impl_t = detail::callback_impl<LockablePtr, F, R, Args...>;
-            return pointer{
-                acquire_lock(p)
-                  ? new impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)}
-                  : nullptr
-                  , deleter{&impl_t::invoke_method}};
+            return acquire_lock(p)
+                ? impl_t::construct(storage, std::forward<LockablePtr>(p), std::forward<F>(f))
+                : nullptr
+                ;
           }())
       {
       }
 
-      friend void swap(callback& lhs, callback rhs) noexcept
+      callback& operator=(callback rhs) noexcept
       {
-        swap(lhs.impl, rhs.impl);
-      }
-
-      callback& operator=(callback rhs)
-      {
-        swap(*this, rhs);
+        *this = nullptr;
+        if (rhs.invoker)
+        {
+          rhs.invoker(rhs.storage, detail::callback_tag_move{std::move(rhs.storage), storage});
+          invoker = rhs.invoker;
+          rhs.invoker = nullptr;
+        }
         return *this;
       }
 
-      callback& operator=(std::nullptr_t)
+      callback& operator=(std::nullptr_t) noexcept
       {
-        impl.reset();
+        if (invoker)
+        {
+          auto invoke = invoker;
+          invoker = nullptr;
+          invoke(storage, detail::callback_tag_delete{});
+        }
         return *this;
       }
 
       explicit operator bool() const noexcept
       {
         bool is_valid = false;
-        if (impl)
-          impl.get_deleter().invoke_method(impl.get(), detail::callback_tag_is_valid{is_valid});
+        if (invoker)
+          invoker(storage, detail::callback_tag_is_valid{is_valid});
         return is_valid;
       }
 
       detail::callback_ret<R> operator()(Args... args) const
       {
-        return impl.get_deleter().invoke_method(impl.get(), detail::callback_tag_invoke<Args...>{std::forward<Args>(args)...});
+        if (!invoker)
+          throw std::bad_function_call();
+        return invoker(storage, detail::callback_tag_invoke<Args...>{std::forward<Args>(args)...});
       }
 
     private:
-      pointer impl;
+      detail::callback_method_invoker<R, Args...> invoker = nullptr;
+      detail::storage_t                           storage;
   };
 }
 
