@@ -93,53 +93,117 @@ namespace util
         : index_sequence<I...> 
     {};
 
-    template <typename... Args>
-    struct callback_helper
+    template <typename R>
+    struct callbackret_s
     {
-      template <typename R, typename F>
-      typename std::enable_if<is_callable<F, Args...>::value, R>::type
-      static do_invoke_impl(F&& f, Args... args)
+      using type = boost::optional<R>;
+    };
+
+    template <>
+    struct callbackret_s<void>
+    {
+      using type = bool;
+    };
+
+    template <typename R>
+    using callback_ret = typename callbackret_s<R>::type;
+
+    template <typename R>
+    callback_ret<R> empty_callback_ret()
+    {
+      return {};
+    }
+
+    template <>
+    bool empty_callback_ret<void>()
+    {
+      return false;
+    }
+
+    template <typename R>
+    struct ret_invoke_helper
+    {
+      template <typename F, typename... Args>
+      typename std::enable_if<is_callable<F, Args...>::value, callback_ret<R>>::type
+      static do_invoke(F&& f, Args&&... args)
       {
         return static_cast<R>(std::forward<F>(f)(std::forward<Args>(args)...));
       }
 
-      template <typename R, typename O, typename F>
-      typename std::enable_if<is_callable<F, Args...>::value, R>::type
-      static do_invoke_impl(O&&, F&& f, Args... args)
+      template <typename O, typename F, typename... Args>
+      typename std::enable_if<is_callable<F, Args...>::value, callback_ret<R>>::type
+      static do_invoke(O&&, F&& f, Args&&... args)
       {
-        return static_cast<R>(std::forward<F>(f)(std::forward<Args>(args)...));
+        return do_invoke(std::forward<F>(f), std::forward<Args>(args)...);
       }
 
-      template <typename R, typename O, typename F>
-      typename std::enable_if<is_callable<F, O, Args...>::value, R>::type
-      static do_invoke_impl(O&& that, F&& f, Args... args)
+      template <typename O, typename F, typename... Args>
+      typename std::enable_if<is_callable<F, O, Args...>::value, callback_ret<R>>::type
+      static do_invoke(O&& that, F&& f, Args&&... args)
       {
-        return static_cast<R>(std::forward<F>(f)(std::forward<O>(that), std::forward<Args>(args)...));
+        return do_invoke(std::forward<F>(f), std::forward<O>(that), std::forward<Args>(args)...);
       }
 
-      template <typename R, typename FR, typename O>
-      static R do_invoke_impl(O* that, FR O::* f, Args... args)
+      template <typename FR, typename O, typename... Args>
+      static callback_ret<R> do_invoke(O* that, FR O::* f, Args&&... args)
       {
         return static_cast<R>((that->*f)(std::forward<Args>(args)...));
       }
+    };
 
+    template <>
+    struct ret_invoke_helper<void>
+    {
+      using R = void;
+
+      template <typename F, typename... Args>
+      typename std::enable_if<is_callable<F, Args...>::value, callback_ret<R>>::type
+      static do_invoke(F&& f, Args&&... args)
+      {
+        return (std::forward<F>(f)(std::forward<Args>(args)...), true);
+      }
+
+      template <typename O, typename F, typename... Args>
+      typename std::enable_if<is_callable<F, Args...>::value, callback_ret<R>>::type
+      static do_invoke(O&&, F&& f, Args&&... args)
+      {
+        return do_invoke(std::forward<F>(f), std::forward<Args>(args)...);
+      }
+
+      template <typename O, typename F, typename... Args>
+      typename std::enable_if<is_callable<F, O, Args...>::value, callback_ret<R>>::type
+      static do_invoke(O&& that, F&& f, Args&&... args)
+      {
+        return do_invoke(std::forward<F>(f), std::forward<O>(that), std::forward<Args>(args)...);
+      }
+
+      template <typename FR, typename O, typename... Args>
+      static callback_ret<R> do_invoke(O* that, FR O::* f, Args&&... args)
+      {
+        return ((that->*f)(std::forward<Args>(args)...), true);
+      }
+    };
+
+    template <typename... Args>
+    struct callback_helper
+    {
       template <typename R, typename RawAddress, typename O, typename F>
-      typename std::enable_if<!std::is_same<RawAddress, void>::value, R>::type
+      typename std::enable_if<!std::is_same<RawAddress, void>::value, callback_ret<R>>::type
       static do_invoke_dereference(O&& that, F&& f, Args... args)
       {
         using ::util::to_address;
-        return do_invoke_impl<R>(to_address(std::forward<O>(that)), std::forward<F>(f), std::forward<Args>(args)...);
+        return ret_invoke_helper<R>::do_invoke(to_address(std::forward<O>(that)), std::forward<F>(f), std::forward<Args>(args)...);
       }
 
       template <typename R, typename RawAddress, typename O, typename F>
-      typename std::enable_if<std::is_same<RawAddress, void>::value, R>::type
+      typename std::enable_if<std::is_same<RawAddress, void>::value, callback_ret<R>>::type
       static do_invoke_dereference(O&&, F&& f, Args... args)
       {
-        return do_invoke_impl<R>(std::forward<F>(f), std::forward<Args>(args)...);
+        return ret_invoke_helper<R>::do_invoke(std::forward<F>(f), std::forward<Args>(args)...);
       }
 
       template <typename R, typename O, typename F, std::size_t... I>
-      static R do_invoke_expand(O&& that, F&& f, std::tuple<Args...>& args, index_sequence<I...>)
+      static callback_ret<R> do_invoke_expand(O&& that, F&& f, std::tuple<Args...>& args, index_sequence<I...>)
       {
         using ::util::to_address;
         using raw_address_t = decltype(to_address(std::forward<O>(that)));
@@ -147,7 +211,7 @@ namespace util
       }
 
       template <typename R, typename O, typename F>
-      static R do_invoke(O&& that, F&& f, std::tuple<Args...>& args)
+      static callback_ret<R> do_invoke(O&& that, F&& f, std::tuple<Args...>& args)
       {
         return do_invoke_expand<R>(std::forward<O>(that), std::forward<F>(f), args, make_index_sequence<sizeof...(Args)>{});
       }
@@ -173,32 +237,6 @@ namespace util
       , callback_deleter<R, Args...>  // delete
       >;
 
-    template <typename R>
-    struct callbackret_s
-    {
-      using type = boost::optional<R>;
-    };
-
-    template <>
-    struct callbackret_s<void>
-    {
-      using type = void;
-    };
-
-    template <typename R>
-    using callback_ret = typename callbackret_s<R>::type;
-
-    template <typename R>
-    callback_ret<R> empty_callback_ret()
-    {
-      return {};
-    }
-
-    template <>
-    void empty_callback_ret<void>()
-    {
-    }
-
     template <typename R, typename... Args>
     using callback_method_invoker = callback_ret<R> (*)(void* that, callback_method<R, Args...>&& call);
 
@@ -219,35 +257,13 @@ namespace util
 
       callback_ret<R> invoke_method(void* that, callback_method<R, Args...>&& call) const
       {
+        if (!that)
+          throw std::bad_function_call();
         return this->invoker(that, std::move(call));
       }
 
       callback_method_invoker<R, Args...> invoker;
     };
-
-    template <typename R, typename... Args>
-    struct callback_invoker_helper
-    {
-      static R invoke(const callback_ptr<R, Args...>& that, Args... args)
-      {
-        return *that.get_deleter().invoke_method(that.get(), std::forward_as_tuple(std::forward<Args>(args)...));
-      }
-    };
-
-    template <typename... Args>
-    struct callback_invoker_helper<void, Args...>
-    {
-      static void invoke(const callback_ptr<void, Args...>& that, Args... args)
-      {
-        that.get_deleter().invoke_method(that.get(), std::forward_as_tuple(std::forward<Args>(args)...));
-      }
-    };
-
-    template <typename R, typename... Args>
-    R invoke(const callback_ptr<R, Args...>& that, Args... args)
-    {
-      return callback_invoker_helper<R, Args...>::invoke(that, std::forward<Args>(args)...);
-    }
 
     template <typename T>
     struct non_ebo_wrapper
@@ -344,7 +360,7 @@ namespace util
           }
           else
           {
-            throw std::bad_function_call();
+            return empty_callback_ret<R>();
           }
         }
 
@@ -403,7 +419,7 @@ namespace util
 
       template <typename F
         , typename = typename std::enable_if<
-           !std::is_same<typename std::decay<F>::type, callback>::value // prevent use of type-erasure instead of copy construction
+           !std::is_same<typename std::decay<F>::type, callback>::value // prevent nested type-erasure instead of copy construction
             && (std::is_convertible<typename std::result_of<F(Args...)>::type, R>::value
              || std::is_void<R>::value
          )>::type>
@@ -474,11 +490,9 @@ namespace util
         return is_valid;
       }
 
-      R operator()(Args... args) const
+      detail::callback_ret<R> operator()(Args... args) const
       {
-        if (!impl)
-          throw std::bad_function_call();
-        return detail::invoke<R, Args...>(impl, std::forward<Args>(args)...);
+        return impl.get_deleter().invoke_method(impl.get(), std::tuple<Args...>(std::forward<Args>(args)...));
       }
 
     private:
