@@ -22,6 +22,7 @@
 #include <boost/optional/optional.hpp>
 #include <boost/variant/apply_visitor.hpp>
 #include <boost/variant/variant.hpp>
+#include <cassert>
 #include <cstddef>
 #include <functional>
 #include <memory>
