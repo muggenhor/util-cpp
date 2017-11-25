@@ -286,6 +286,20 @@ namespace util
     template <typename T>
     using wrap_pointer_t = typename wrap_pointer<T>::type;
 
+    template <typename T>
+    typename std::enable_if<std::is_constructible<bool, T>::value, bool>::type
+    constexpr convert_to_bool_or_true(const T& o)
+    {
+      return static_cast<bool>(o);
+    }
+
+    template <typename T>
+    typename std::enable_if<!std::is_constructible<bool, T>::value, bool>::type
+    constexpr convert_to_bool_or_true(const T&)
+    {
+      return true;
+    }
+
     template <typename LockablePtr, typename F, typename R, typename... Args>
     class callback_impl final : // inherit for empty-base optimisation
                                  private wrap_pointer_t<LockablePtr>
@@ -316,7 +330,7 @@ namespace util
         callback_ret<R> operator()(bool& is_valid) const noexcept
         {
           using ::util::acquire_lock;
-          is_valid = static_cast<bool>(f) && static_cast<bool>(acquire_lock(static_cast<const base_t&>(*this)));
+          is_valid = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const base_t&>(*this)));
           return empty_callback_ret<R>();
         }
 
