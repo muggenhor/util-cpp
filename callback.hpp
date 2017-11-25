@@ -250,6 +250,28 @@ namespace util
     }
 
     template <typename T>
+    struct non_ebo_wrapper
+    {
+      constexpr non_ebo_wrapper(const T& v) : v(v) {}
+      constexpr non_ebo_wrapper(T&& v) : v(std::move(v)) {}
+
+      operator T&()
+      {
+        return v;
+      }
+
+      constexpr operator const T&() const
+      {
+        return v;
+      }
+
+      T v;
+    };
+
+    template <typename T>
+    using ebo_t = typename std::conditional<std::is_empty<T>::value, T, non_ebo_wrapper<T>>::type;
+
+    template <typename T>
     struct pointer_wrapper
     {
     public:
@@ -297,13 +319,15 @@ namespace util
     template <typename LockablePtr, typename F, typename R, typename... Args>
     class callback_impl final : // inherit for empty-base optimisation
                                  private wrap_pointer_t<LockablePtr>
+                               , private ebo_t<F>
     {
       public:
-        using base_t = wrap_pointer_t<LockablePtr>;
+        using pointer_base = wrap_pointer_t<LockablePtr>;
+        using functor_base = ebo_t<F>;
 
         callback_impl(LockablePtr p, F f)
-          : base_t(std::forward<LockablePtr>(p))
-          , f(std::forward<F>(f))
+          : pointer_base(std::forward<LockablePtr>(p))
+          , functor_base(std::forward<F>(f))
         {}
 
         using result_type = callback_ret<R>;
@@ -311,7 +335,10 @@ namespace util
         callback_ret<R> operator()(std::tuple<Args...>& args)
         {
           using ::util::acquire_lock;
-          if (auto i = acquire_lock(static_cast<const base_t&>(*this)))
+
+          F& f = *this;
+
+          if (auto i = acquire_lock(static_cast<const pointer_base&>(*this)))
           {
             return callback_helper<Args...>::template do_invoke<R>(std::forward<decltype(i)>(i), f, args);
           }
@@ -324,7 +351,8 @@ namespace util
         callback_ret<R> operator()(bool& is_valid) const noexcept
         {
           using ::util::acquire_lock;
-          is_valid = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const base_t&>(*this)));
+          const F& f = *this;
+          is_valid = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const pointer_base&>(*this)));
           return empty_callback_ret<R>();
         }
 
@@ -344,9 +372,6 @@ namespace util
         {
           return boost::apply_visitor(*static_cast<callback_impl*>(that), call);
         }
-
-      private:
-        F f;
     };
   }
 
