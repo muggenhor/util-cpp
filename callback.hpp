@@ -200,7 +200,7 @@ namespace util
     }
 
     template <typename R, typename... Args>
-    using callback_method_invoker = callback_ret<R> (*)(const void* that, callback_method<R, Args...>&& call);
+    using callback_method_invoker = callback_ret<R> (*)(void* that, callback_method<R, Args...>&& call);
 
     // Functions as deleter for unique_ptr and simultaneously as dispatcher to the type-erased callback implementation
     template <typename R, typename... Args>
@@ -217,7 +217,7 @@ namespace util
         invoke_method(p, *this);
       }
 
-      callback_ret<R> invoke_method(const void* that, callback_method<R, Args...>&& call) const
+      callback_ret<R> invoke_method(void* that, callback_method<R, Args...>&& call) const
       {
         return this->invoker(that, std::move(call));
       }
@@ -300,7 +300,7 @@ namespace util
 
         using result_type = callback_ret<R>;
 
-        callback_ret<R> operator()(std::tuple<Args...>& args) const
+        callback_ret<R> operator()(std::tuple<Args...>& args)
         {
           using ::util::acquire_lock;
           if (auto i = acquire_lock(static_cast<const base_t&>(*this)))
@@ -332,9 +332,9 @@ namespace util
           return empty_callback_ret<R>();
         }
 
-        static callback_ret<R> invoke_method(const void* that, callback_method<R, Args...>&& call)
+        static callback_ret<R> invoke_method(void* that, callback_method<R, Args...>&& call)
         {
-          return boost::apply_visitor(*static_cast<const callback_impl*>(that), call);
+          return boost::apply_visitor(*static_cast<callback_impl*>(that), call);
         }
 
       private:
@@ -460,18 +460,25 @@ namespace util
 namespace
 {
   int some_f(int, char) { return 0; }
+
+  struct S
+  {
+    int operator()(int, char) const { return 1; }
+  };
 }
 
 int main()
 {
   using namespace util;
 
+  callback<void (int, char)> w{S{}};
   callback<void (int, char)> x(some_f);
   callback<void (int, char)> y{x};
   callback<void (int, char)> z{std::move(x)};
 
-  y(0, 'a');
-  z(1, 'b');
+  w(0, 'a');
+  y(1, 'b');
+  z(2, 'c');
 
   try
   {
