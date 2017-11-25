@@ -459,7 +459,7 @@ namespace util
       {
         if (!impl)
           throw std::bad_function_call();
-        return invoke(impl, std::forward<Args>(args)...);
+        return detail::invoke<R, Args...>(impl, std::forward<Args>(args)...);
       }
 
     private:
