@@ -255,21 +255,15 @@ namespace util
     public:
       constexpr pointer_wrapper(T p) : pointer(p) {}
 
-      constexpr operator const T&() const
+      friend constexpr T acquire_lock(const pointer_wrapper& p)
       {
-        return pointer;
+        using ::util::acquire_lock;
+        return acquire_lock(p.pointer);
       }
 
     private:
       T pointer;
     };
-
-    template <typename T>
-    T acquire_lock(const pointer_wrapper<T>& p)
-    {
-      using ::util::acquire_lock;
-      return acquire_lock(static_cast<const T&>(p));
-    }
 
     template <typename T>
     struct wrap_pointer
