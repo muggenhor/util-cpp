@@ -464,7 +464,8 @@ namespace util
             auto* const thatp = static_cast<callback_impl*>(op.src);
             assert(thatp == &that && "move constructor doesn't apply to this type!");
 
-            assert(op.size >= sizeof(callback_impl*));
+            if (sizeof(callback_impl*) > op.size)
+              throw std::length_error("storage area not large enough to store a pointer for external storage!");
             *static_cast<callback_impl**>(op.dst) = new callback_impl{std::move(*thatp)};
             that.~callback_impl();
           }
@@ -519,28 +520,68 @@ namespace util
     template <typename R, typename... Args, typename Storage, typename LockablePtr, typename F>
     callback_method_invoker<R, Args...> construct_callback_impl(Storage& s, LockablePtr p, F f)
     {
-      void* const dp = &s;
+      void* const dst = &s;
 
       using impl_t = callback_impl<typename std::decay<LockablePtr>::type, typename std::decay<F>::type, R, Args...>;
 
       constexpr const bool stored_internally = true
-        &&  sizeof (impl_t) <= sizeof(Storage)
-        && (alignof(Storage) % alignof(impl_t)) == 0
+        && (sizeof (impl_t) <= Storage::size || std::is_empty<impl_t>::value)
+        && (Storage::align   % alignof(impl_t)) == 0
         // external storage allows us to just move a pointer: that's guaranteed not to throw
         && std::is_nothrow_move_constructible<impl_t>::value
         ;
 
       if (stored_internally)
-        ::new (dp) impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)};
+      {
+        ::new (dst) impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)};
+      }
       else
-        *static_cast<impl_t**>(dp) = new impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)};
+      {
+        static_assert(stored_internally || sizeof(impl_t*) <= Storage::size, "storage area not large enough to store a pointer for external storage!");
+        *static_cast<impl_t**>(dst) = new impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)};
+      }
       return impl_t::template invoke_method<stored_internally>;
     }
+
+    template <std::size_t SmallBufferSize>
+    class callback_storage
+    {
+      private:
+        typename std::aligned_storage<SmallBufferSize, alignof(void*)>::type _store;
+
+      public:
+        static constexpr const std::size_t size  = sizeof(_store);
+        static constexpr const std::size_t align = alignof(decltype(_store));
+
+                  void      * data()       noexcept { return &_store; }
+        constexpr void const* data() const noexcept { return &_store; }
+
+      protected:
+                  callback_storage      & storage()       noexcept { return *this; }
+        constexpr callback_storage const& storage() const noexcept { return *this; }
+    };
+
+    template <>
+    class callback_storage<std::size_t(0)>
+    {
+      public:
+        static constexpr const std::size_t size  = 0;
+        static constexpr const std::size_t align = 1;
+
+                  void      * data()       noexcept { return this; }
+        constexpr void const* data() const noexcept { return this; }
+
+      protected:
+                  callback_storage      & storage()       noexcept { return *this; }
+        constexpr callback_storage const& storage() const noexcept { return *this; }
+    };
   }
 
   template <std::size_t SmallBufferSize, typename R, typename... Args>
-  class callback<R(Args...), SmallBufferSize>
+  class callback<R(Args...), SmallBufferSize> : private detail::callback_storage<SmallBufferSize>
   {
+    private:
+      using storage_t = detail::callback_storage<SmallBufferSize>;
     public:
       constexpr callback() noexcept = default;
       constexpr callback(std::nullptr_t) noexcept {}
@@ -548,7 +589,7 @@ namespace util
       callback(const callback& other)
         : invoker([&] {
             if (other.invoker)
-              other.invoker(&other.storage, detail::callback_tag_clone{&storage});
+              other.invoker(other.data(), detail::callback_tag_clone{this->data()});
             return other.invoker;
           }())
       {
@@ -559,7 +600,7 @@ namespace util
             auto invoke = other.invoker;
             if (invoke)
             {
-              invoke(&other.storage, detail::callback_tag_move{&other.storage, &storage});
+              invoke(other.data(), detail::callback_tag_move{other.data(), this->data()});
               other.invoker = nullptr;
             }
             return invoke;
@@ -576,8 +617,8 @@ namespace util
             if (other.invoker)
             {
               void (*new_invoker)() = nullptr;
-              other.invoker(&other.storage, detail::callback_tag_move_resize{
-                  &other.storage, &storage, sizeof(storage), alignof(decltype(storage)), new_invoker});
+              other.invoker(other.data(), detail::callback_tag_move_resize{
+                  other.data(), this->data(), storage_t::size, storage_t::align, new_invoker});
               other.invoker = nullptr;
               assert(new_invoker != nullptr);
               return reinterpret_cast<decltype(invoker)>(new_invoker);
@@ -599,7 +640,7 @@ namespace util
              || std::is_void<R>::value
          )>::type>
       callback(F f)
-        : invoker(detail::construct_callback_impl<R, Args...>(storage, detail::always_valid_ptr{}, std::forward<F>(f)))
+        : invoker(detail::construct_callback_impl<R, Args...>(this->storage(), detail::always_valid_ptr{}, std::forward<F>(f)))
       {
       }
 
@@ -611,7 +652,7 @@ namespace util
              || std::is_void<R>::value
          )>::type>
       explicit callback(callback<FR(FArgs...), FSBS> f)
-        : invoker(detail::construct_callback_impl<R, Args...>(storage, detail::always_valid_ptr{}, std::move(f)))
+        : invoker(detail::construct_callback_impl<R, Args...>(this->storage(), detail::always_valid_ptr{}, std::move(f)))
       {
       }
 
@@ -622,7 +663,7 @@ namespace util
          >::type>
       callback(F f, LockablePtr p)
         : invoker(acquire_lock(p)
-                ? detail::construct_callback_impl<R, Args...>(storage, std::forward<LockablePtr>(p), std::forward<F>(f))
+                ? detail::construct_callback_impl<R, Args...>(this->storage(), std::forward<LockablePtr>(p), std::forward<F>(f))
                 : nullptr
                 )
       {
@@ -635,7 +676,7 @@ namespace util
             || std::is_void<R>::value
             >::type* = nullptr)
         : invoker(acquire_lock(p)
-                ? detail::construct_callback_impl<R, Args...>(storage, std::forward<LockablePtr>(p), std::forward<F>(f))
+                ? detail::construct_callback_impl<R, Args...>(this->storage(), std::forward<LockablePtr>(p), std::forward<F>(f))
                 : nullptr
                 )
       {
@@ -646,7 +687,7 @@ namespace util
         *this = nullptr;
         if (rhs.invoker)
         {
-          rhs.invoker(&rhs.storage, detail::callback_tag_move{&rhs.storage, &storage});
+          rhs.invoker(rhs.data(), detail::callback_tag_move{rhs.data(), this->data()});
           invoker = rhs.invoker;
           rhs.invoker = nullptr;
         }
@@ -659,7 +700,7 @@ namespace util
         {
           auto invoke = invoker;
           invoker = nullptr;
-          invoke(&storage, detail::callback_tag_delete{});
+          invoke(this->data(), detail::callback_tag_delete{});
         }
         return *this;
       }
@@ -668,7 +709,7 @@ namespace util
       {
         bool is_valid = false;
         if (invoker)
-          invoker(&storage, detail::callback_tag_is_valid{is_valid});
+          invoker(this->data(), detail::callback_tag_is_valid{is_valid});
         return is_valid;
       }
 
@@ -676,15 +717,11 @@ namespace util
       {
         if (!invoker)
           throw std::bad_function_call();
-        return invoker(&storage, detail::callback_tag_invoke<Args...>{std::forward<Args>(args)...});
+        return invoker(this->data(), detail::callback_tag_invoke<Args...>{std::forward<Args>(args)...});
       }
 
     private:
       detail::callback_method_invoker<R, Args...> invoker = nullptr;
-      typename std::aligned_storage<
-          SmallBufferSize
-        , alignof(std::weak_ptr<void>)
-        >::type                                   storage;
 
       template <typename, std::size_t>
       friend class callback;
@@ -740,10 +777,12 @@ int main()
 {
   using namespace util;
 
-  callback<void (int, char)> w{S{}};
+  callback<void (int, char), 0> w{S{}};
   callback<void (int, char)> x(some_f);
   callback<void (int, char)> y{x};
   callback<void (int, char), sizeof(void (*)())> z{std::move(x)};
+
+  static_assert(sizeof(w) == sizeof(void (*)()), "minimimum type erasure size exceeds that of a function pointer");
 
   {
     auto s = std::make_shared<S>();
