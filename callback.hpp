@@ -241,11 +241,6 @@ namespace util
       return true;
     }
 
-    using storage_t = std::aligned_storage<
-        sizeof(void (always_valid_ptr::*)()) + sizeof(std::weak_ptr<void>)
-      , alignof(std::weak_ptr<void>)
-      >::type;
-
     template <typename... Args>
     struct callback_tag_invoke
     {
@@ -266,15 +261,15 @@ namespace util
 
     struct callback_tag_clone
     {
-      explicit constexpr callback_tag_clone(storage_t& dst) noexcept : dst(dst) {}
-      storage_t& dst;
+      explicit constexpr callback_tag_clone(void* dst) noexcept : dst(dst) {}
+      void* const dst;
     };
 
     struct callback_tag_move
     {
-      explicit constexpr callback_tag_move(storage_t&& src, storage_t& dst) noexcept : src(std::move(src)), dst(dst) {}
-      storage_t&& src;
-      storage_t& dst;
+      explicit constexpr callback_tag_move(void* src, void* dst) noexcept : src(std::move(src)), dst(dst) {}
+      void* const src;
+      void* const dst;
     };
 
     struct callback_tag_delete {};
@@ -289,7 +284,7 @@ namespace util
       >;
 
     template <typename R, typename... Args>
-    using callback_method_invoker = callback_ret<R> (*)(const storage_t& that, callback_method<Args...>&& call);
+    using callback_method_invoker = callback_ret<R> (*)(const void* that, callback_method<Args...>&& call);
 
     template <typename T>
     struct non_ebo_wrapper
@@ -358,20 +353,6 @@ namespace util
       return true;
     }
 
-    template <typename T, typename Storage>
-    struct callback_stored_internally
-    {
-      static constexpr const bool value = true
-        &&  sizeof (T)      <= sizeof(Storage)
-        && (alignof(Storage) % alignof(T)) == 0
-        // force external storage (tracked via ptr) if the contained type isn't noexcept movable
-        && noexcept(T{std::declval<T>()})
-        ;
-    };
-
-    template <typename R, typename... Args, typename LockablePtr, typename F>
-    callback_method_invoker<R, Args...> construct_callback_impl(storage_t& s, LockablePtr p, F f);
-
     template <typename LockablePtr, typename F, typename R, typename... Args>
     class callback_impl final : // inherit for empty-base optimisation
                                  private wrap_pointer_t<LockablePtr>
@@ -386,6 +367,7 @@ namespace util
         , functor_base(std::forward<F>(f))
       {}
 
+      template <bool stored_internally>
       class invoke_visitor
       {
       private:
@@ -423,43 +405,39 @@ namespace util
 
         callback_ret<R> operator()(const callback_tag_move& op) const noexcept
         {
-          void* const dp = &op.dst;
-          void* const sp = &op.src;
-          assert(sp != dp && "move constructing to the same address is illegal!");
+          assert(op.src != op.dst && "move constructing to the same address is illegal!");
 
-          if (callback_stored_internally<callback_impl, storage_t>::value)
+          if (stored_internally)
           {
-            auto* const thatp = static_cast<callback_impl*>(sp);
+            auto* const thatp = static_cast<callback_impl*>(op.src);
             assert(thatp == &that && "move constructor doesn't apply to this type!");
 
-            ::new (dp) callback_impl{std::move(*thatp)};
+            ::new (op.dst) callback_impl{std::move(*thatp)};
             thatp->~callback_impl();
           }
           else
           {
-            auto** const spp = static_cast<callback_impl**>(sp);
-            assert(*spp == &that && "move constructor doesn't apply to this type!");
+            auto*& thatp = *static_cast<callback_impl**>(op.src);
+            assert(thatp == &that && "move constructor doesn't apply to this type!");
 
-            *static_cast<callback_impl**>(dp) = *spp;
-            *spp = nullptr;
+            *static_cast<callback_impl**>(op.dst) = thatp;
+            thatp = nullptr;
           }
           return {};
         }
 
         callback_ret<R> operator()(const callback_tag_clone& op) const
         {
-          void* const dp = &op.dst;
-
-          if (callback_stored_internally<callback_impl, storage_t>::value)
-            ::new (dp) callback_impl{that};
+          if (stored_internally)
+            ::new (op.dst) callback_impl{that};
           else
-            *static_cast<callback_impl**>(dp) = new callback_impl{that};
+            *static_cast<callback_impl**>(op.dst) = new callback_impl{that};
           return {};
         }
 
         callback_ret<R> operator()(const callback_tag_delete&) const
         {
-          if (callback_stored_internally<callback_impl, storage_t>::value)
+          if (stored_internally)
             that.~callback_impl();
           else
             delete &that;
@@ -467,33 +445,40 @@ namespace util
         }
       };
 
-      static callback_ret<R> invoke_method(const storage_t& s, callback_method<Args...>&& call)
+      template <bool stored_internally>
+      static callback_ret<R> invoke_method(const void* s, callback_method<Args...>&& call)
       {
-        const void* const ip = &s;
-        auto* const that = callback_stored_internally<callback_impl, storage_t>::value
-          ? static_cast<const callback_impl*>(ip)
-          : *static_cast<const callback_impl* const *>(ip)
+        auto* const that = stored_internally
+          ? static_cast<const callback_impl*>(s)
+          : *static_cast<const callback_impl* const *>(s)
           ;
 
-        return boost::apply_visitor(invoke_visitor{*that}, call);
+        return boost::apply_visitor(invoke_visitor<stored_internally>{*that}, call);
       }
 
-      template <typename R2, typename... Args2, typename LockablePtr2, typename F2>
-      friend callback_method_invoker<R2, Args2...> construct_callback_impl(storage_t& s, LockablePtr2 p, F2 f);
+      template <typename R2, typename... Args2, typename Storage2, typename LockablePtr2, typename F2>
+      friend callback_method_invoker<R2, Args2...> construct_callback_impl(Storage2& s, LockablePtr2 p, F2 f);
     };
 
-    template <typename R, typename... Args, typename LockablePtr, typename F>
-    callback_method_invoker<R, Args...> construct_callback_impl(storage_t& s, LockablePtr p, F f)
+    template <typename R, typename... Args, typename Storage, typename LockablePtr, typename F>
+    callback_method_invoker<R, Args...> construct_callback_impl(Storage& s, LockablePtr p, F f)
     {
       void* const dp = &s;
 
       using impl_t = callback_impl<typename std::decay<LockablePtr>::type, typename std::decay<F>::type, R, Args...>;
 
-      if (callback_stored_internally<impl_t, storage_t>::value)
+      constexpr const bool stored_internally = true
+        &&  sizeof (impl_t) <= sizeof(Storage)
+        && (alignof(Storage) % alignof(impl_t)) == 0
+        // force external storage (tracked via ptr) if the contained type isn't noexcept movable
+        && noexcept(impl_t{std::declval<impl_t>()})
+        ;
+
+      if (stored_internally)
         ::new (dp) impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)};
       else
         *static_cast<impl_t**>(dp) = new impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)};
-      return impl_t::invoke_method;
+      return impl_t::template invoke_method<stored_internally>;
     }
   }
 
@@ -507,7 +492,7 @@ namespace util
       callback(const callback& other)
         : invoker([&] {
             if (other.invoker)
-              other.invoker(other.storage, detail::callback_tag_clone{storage});
+              other.invoker(&other.storage, detail::callback_tag_clone{&storage});
             return other.invoker;
           }())
       {
@@ -518,7 +503,7 @@ namespace util
             auto invoke = other.invoker;
             if (invoke)
             {
-              invoke(other.storage, detail::callback_tag_move{std::move(other.storage), storage});
+              invoke(&other.storage, detail::callback_tag_move{&other.storage, &storage});
               other.invoker = nullptr;
             }
             return invoke;
@@ -573,7 +558,7 @@ namespace util
         *this = nullptr;
         if (rhs.invoker)
         {
-          rhs.invoker(rhs.storage, detail::callback_tag_move{std::move(rhs.storage), storage});
+          rhs.invoker(&rhs.storage, detail::callback_tag_move{&rhs.storage, &storage});
           invoker = rhs.invoker;
           rhs.invoker = nullptr;
         }
@@ -586,7 +571,7 @@ namespace util
         {
           auto invoke = invoker;
           invoker = nullptr;
-          invoke(storage, detail::callback_tag_delete{});
+          invoke(&storage, detail::callback_tag_delete{});
         }
         return *this;
       }
@@ -595,7 +580,7 @@ namespace util
       {
         bool is_valid = false;
         if (invoker)
-          invoker(storage, detail::callback_tag_is_valid{is_valid});
+          invoker(&storage, detail::callback_tag_is_valid{is_valid});
         return is_valid;
       }
 
@@ -603,12 +588,15 @@ namespace util
       {
         if (!invoker)
           throw std::bad_function_call();
-        return invoker(storage, detail::callback_tag_invoke<Args...>{std::forward<Args>(args)...});
+        return invoker(&storage, detail::callback_tag_invoke<Args...>{std::forward<Args>(args)...});
       }
 
     private:
       detail::callback_method_invoker<R, Args...> invoker = nullptr;
-      detail::storage_t                           storage;
+      typename std::aligned_storage<
+          sizeof(void (callback::*)()) + sizeof(std::weak_ptr<void>)
+        , alignof(std::weak_ptr<void>)
+        >::type                                   storage;
   };
 
   template <typename ForwardRange, typename... Args>
