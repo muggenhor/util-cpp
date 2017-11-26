@@ -377,16 +377,23 @@ namespace util
                                  private wrap_pointer_t<LockablePtr>
                                , private ebo_t<F>
     {
+    private:
+      using pointer_base = wrap_pointer_t<LockablePtr>;
+      using functor_base = ebo_t<F>;
+
+      callback_impl(LockablePtr p, F f)
+        : pointer_base(std::forward<LockablePtr>(p))
+        , functor_base(std::forward<F>(f))
+      {}
+
+      class invoke_visitor
+      {
       private:
-        using pointer_base = wrap_pointer_t<LockablePtr>;
-        using functor_base = ebo_t<F>;
+        friend class callback_impl;
+        invoke_visitor(const callback_impl& that) : that(that) {}
+        const callback_impl& that;
 
-        callback_impl(LockablePtr p, F f)
-          : pointer_base(std::forward<LockablePtr>(p))
-          , functor_base(std::forward<F>(f))
-        {}
-
-      public: // for boost::apply_visitor only
+      public:
         using result_type = callback_ret<R>;
 
         callback_ret<R> operator()(detail::callback_tag_invoke<Args...>& op) const
@@ -394,9 +401,9 @@ namespace util
           using ::util::acquire_lock;
 
           // Casting away constness because 'mutable' isn't an option with the empty base optimization
-          F& f = const_cast<callback_impl&>(*this);
+          F& f = const_cast<callback_impl&>(that);
 
-          if (auto i = acquire_lock(static_cast<const pointer_base&>(*this)))
+          if (auto i = acquire_lock(static_cast<const pointer_base&>(that)))
           {
             return callback_helper<Args...>::template do_invoke<R>(std::forward<decltype(i)>(i), f, std::move(op.args));
           }
@@ -409,8 +416,8 @@ namespace util
         callback_ret<R> operator()(const callback_tag_is_valid& op) const noexcept
         {
           using ::util::acquire_lock;
-          const F& f = *this;
-          op.ret = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const pointer_base&>(*this)));
+          const F& f = that;
+          op.ret = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const pointer_base&>(that)));
           return {};
         }
 
@@ -422,16 +429,16 @@ namespace util
 
           if (callback_stored_internally<callback_impl, storage_t>::value)
           {
-            auto* const that = static_cast<callback_impl*>(sp);
-            assert(that == this && "move constructor doesn't apply to this type!");
+            auto* const thatp = static_cast<callback_impl*>(sp);
+            assert(thatp == &that && "move constructor doesn't apply to this type!");
 
-            ::new (dp) callback_impl{std::move(*that)};
-            that->~callback_impl();
+            ::new (dp) callback_impl{std::move(*thatp)};
+            thatp->~callback_impl();
           }
           else
           {
             auto** const spp = static_cast<callback_impl**>(sp);
-            assert(*spp == this && "move constructor doesn't apply to this type!");
+            assert(*spp == &that && "move constructor doesn't apply to this type!");
 
             *static_cast<callback_impl**>(dp) = *spp;
             *spp = nullptr;
@@ -444,35 +451,35 @@ namespace util
           void* const dp = &op.dst;
 
           if (callback_stored_internally<callback_impl, storage_t>::value)
-            ::new (dp) callback_impl{*this};
+            ::new (dp) callback_impl{that};
           else
-            *static_cast<callback_impl**>(dp) = new callback_impl{*this};
+            *static_cast<callback_impl**>(dp) = new callback_impl{that};
           return {};
         }
 
         callback_ret<R> operator()(const callback_tag_delete&) const
         {
           if (callback_stored_internally<callback_impl, storage_t>::value)
-            this->~callback_impl();
+            that.~callback_impl();
           else
-            delete this;
+            delete &that;
           return {};
         }
+      };
 
-      private:
-        static callback_ret<R> invoke_method(const storage_t& s, callback_method<Args...>&& call)
-        {
-          const void* const ip = &s;
-          auto* const that = callback_stored_internally<callback_impl, storage_t>::value
-            ? static_cast<const callback_impl*>(ip)
-            : *static_cast<const callback_impl* const *>(ip)
-            ;
+      static callback_ret<R> invoke_method(const storage_t& s, callback_method<Args...>&& call)
+      {
+        const void* const ip = &s;
+        auto* const that = callback_stored_internally<callback_impl, storage_t>::value
+          ? static_cast<const callback_impl*>(ip)
+          : *static_cast<const callback_impl* const *>(ip)
+          ;
 
-          return boost::apply_visitor(*that, call);
-        }
+        return boost::apply_visitor(invoke_visitor{*that}, call);
+      }
 
-        template <typename R2, typename... Args2, typename LockablePtr2, typename F2>
-        friend callback_method_invoker<R2, Args2...> construct_callback_impl(storage_t& s, LockablePtr2 p, F2 f);
+      template <typename R2, typename... Args2, typename LockablePtr2, typename F2>
+      friend callback_method_invoker<R2, Args2...> construct_callback_impl(storage_t& s, LockablePtr2 p, F2 f);
     };
 
     template <typename R, typename... Args, typename LockablePtr, typename F>
