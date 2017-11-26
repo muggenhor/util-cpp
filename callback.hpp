@@ -369,6 +369,9 @@ namespace util
         ;
     };
 
+    template <typename R, typename... Args, typename LockablePtr, typename F>
+    callback_method_invoker<R, Args...> construct_callback_impl(storage_t& s, LockablePtr p, F f);
+
     template <typename LockablePtr, typename F, typename R, typename... Args>
     class callback_impl final : // inherit for empty-base optimisation
                                  private wrap_pointer_t<LockablePtr>
@@ -467,18 +470,23 @@ namespace util
           return boost::apply_visitor(*that, call);
         }
 
-      public:
-        static callback_method_invoker<R, Args...> construct(storage_t& s, LockablePtr p, F f)
-        {
-          void* const dp = &s;
-
-          if (callback_stored_internally<callback_impl, storage_t>::value)
-            ::new (dp) callback_impl{std::forward<LockablePtr>(p), std::forward<F>(f)};
-          else
-            *static_cast<callback_impl**>(dp) = new callback_impl{std::forward<LockablePtr>(p), std::forward<F>(f)};
-          return invoke_method;
-        }
+        template <typename R2, typename... Args2, typename LockablePtr2, typename F2>
+        friend callback_method_invoker<R2, Args2...> construct_callback_impl(storage_t& s, LockablePtr2 p, F2 f);
     };
+
+    template <typename R, typename... Args, typename LockablePtr, typename F>
+    callback_method_invoker<R, Args...> construct_callback_impl(storage_t& s, LockablePtr p, F f)
+    {
+      void* const dp = &s;
+
+      using impl_t = callback_impl<typename std::decay<LockablePtr>::type, typename std::decay<F>::type, R, Args...>;
+
+      if (callback_stored_internally<impl_t, storage_t>::value)
+        ::new (dp) impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)};
+      else
+        *static_cast<impl_t**>(dp) = new impl_t{std::forward<LockablePtr>(p), std::forward<F>(f)};
+      return impl_t::invoke_method;
+    }
   }
 
   template <typename R, typename... Args>
@@ -522,10 +530,7 @@ namespace util
              || std::is_void<R>::value
          )>::type>
       callback(F f)
-        : invoker([&] {
-            using impl_t = detail::callback_impl<detail::always_valid_ptr, F, R, Args...>;
-            return impl_t::construct(storage, {}, std::forward<F>(f));
-          }())
+        : invoker(detail::construct_callback_impl<R, Args...>(storage, detail::always_valid_ptr{}, std::forward<F>(f)))
       {
       }
 
@@ -535,13 +540,10 @@ namespace util
          || std::is_void<R>::value)
          >::type>
       callback(F f, LockablePtr p)
-        : invoker([&] {
-            using impl_t = detail::callback_impl<LockablePtr, F, R, Args...>;
-            return acquire_lock(p)
-                ? impl_t::construct(storage, std::forward<LockablePtr>(p), std::forward<F>(f))
+        : invoker(acquire_lock(p)
+                ? detail::construct_callback_impl<R, Args...>(storage, std::forward<LockablePtr>(p), std::forward<F>(f))
                 : nullptr
-                ;
-          }())
+                )
       {
       }
 
@@ -551,13 +553,10 @@ namespace util
               (std::is_convertible<typename std::result_of<F(typename std::pointer_traits<LockablePtr>::element_type*, Args...)>::type, R>::value
             || std::is_void<R>::value)
             >::type* = nullptr)
-        : invoker([&] {
-            using impl_t = detail::callback_impl<LockablePtr, F, R, Args...>;
-            return acquire_lock(p)
-                ? impl_t::construct(storage, std::forward<LockablePtr>(p), std::forward<F>(f))
+        : invoker(acquire_lock(p)
+                ? detail::construct_callback_impl<R, Args...>(storage, std::forward<LockablePtr>(p), std::forward<F>(f))
                 : nullptr
-                ;
-          }())
+                )
       {
       }
 
