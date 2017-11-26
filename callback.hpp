@@ -470,8 +470,8 @@ namespace util
       constexpr const bool stored_internally = true
         &&  sizeof (impl_t) <= sizeof(Storage)
         && (alignof(Storage) % alignof(impl_t)) == 0
-        // force external storage (tracked via ptr) if the contained type isn't noexcept movable
-        && noexcept(impl_t{std::declval<impl_t>()})
+        // external storage allows us to just move a pointer: that's guaranteed not to throw
+        && std::is_nothrow_move_constructible<impl_t>::value
         ;
 
       if (stored_internally)
