@@ -527,10 +527,22 @@ namespace util
       {
       }
 
+      template <typename FR, typename... FArgs
+        , typename = typename std::result_of<callback<FR(FArgs...)>(Args...)>::type
+        , typename = typename std::enable_if<
+           !std::is_same<callback<FR(FArgs...)>, callback>::value // prevent nested type-erasure instead of copy construction
+            && (std::is_convertible<FR, R>::value
+             || std::is_void<R>::value
+         )>::type>
+      explicit callback(callback<FR(FArgs...)> f)
+        : invoker(detail::construct_callback_impl<R, Args...>(storage, detail::always_valid_ptr{}, std::forward<callback<FR(FArgs...)>>(f)))
+      {
+      }
+
       template <typename LockablePtr, typename F
-        , typename = typename std::enable_if<!std::is_same<F, callback>::value &&
-           (std::is_convertible<typename std::result_of<F(Args...)>::type, R>::value
-         || std::is_void<R>::value)
+        , typename = typename std::enable_if<
+            std::is_convertible<typename std::result_of<F(Args...)>::type, R>::value
+         || std::is_void<R>::value
          >::type>
       callback(F f, LockablePtr p)
         : invoker(acquire_lock(p)
@@ -542,9 +554,9 @@ namespace util
 
       template <typename LockablePtr, typename F>
       callback(F f, LockablePtr p
-          , typename std::enable_if<!std::is_same<F, callback>::value &&
-              (std::is_convertible<typename std::result_of<F(typename std::pointer_traits<LockablePtr>::element_type*, Args...)>::type, R>::value
-            || std::is_void<R>::value)
+          , typename std::enable_if<
+               std::is_convertible<typename std::result_of<F(typename std::pointer_traits<LockablePtr>::element_type*, Args...)>::type, R>::value
+            || std::is_void<R>::value
             >::type* = nullptr)
         : invoker(acquire_lock(p)
                 ? detail::construct_callback_impl<R, Args...>(storage, std::forward<LockablePtr>(p), std::forward<F>(f))
