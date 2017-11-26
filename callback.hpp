@@ -206,7 +206,7 @@ namespace util
     struct callback_helper
     {
       template <typename R, typename RawAddress, typename O, typename F>
-      typename std::enable_if<!std::is_same<RawAddress, void>::value, callback_ret<R>>::type
+      typename std::enable_if<!std::is_void<RawAddress>::value, callback_ret<R>>::type
       static do_invoke_dereference(O&& that, F&& f, Args... args)
       {
         using ::util::to_address;
@@ -214,7 +214,7 @@ namespace util
       }
 
       template <typename R, typename RawAddress, typename O, typename F>
-      typename std::enable_if<std::is_same<RawAddress, void>::value, callback_ret<R>>::type
+      typename std::enable_if<std::is_void<RawAddress>::value, callback_ret<R>>::type
       static do_invoke_dereference(O&&, F&& f, Args... args)
       {
         return ret_invoke_helper<R>::do_invoke(std::forward<F>(f), std::forward<Args>(args)...);
