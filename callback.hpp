@@ -353,6 +353,86 @@ namespace util
       return true;
     }
 
+    template <typename... Fs>
+    struct overloaded;
+
+    template <typename F1, typename... Fs>
+    struct overloaded<F1, Fs...> : F1, overloaded<Fs...>
+    {
+      constexpr overloaded(F1 f1, Fs... fs) noexcept(
+          noexcept(F1{std::forward<F1>(f1)})
+       && noexcept(overloaded<Fs...>{std::forward<Fs>(fs)...}))
+        : F1{std::forward<F1>(f1)}
+        , overloaded<Fs...>{std::forward<Fs>(fs)...}
+      {}
+
+      using F1::operator();
+      using overloaded<Fs...>::operator();
+    };
+
+    template <typename F1>
+    struct overloaded<F1> : F1
+    {
+      constexpr overloaded(F1 f1) noexcept(noexcept(F1(std::forward<F1>(f1))))
+        : F1(std::forward<F1>(f1))
+      {}
+
+      using F1::operator();
+    };
+
+    template <typename R, typename... Fs>
+    struct overloaded_ret : overloaded<Fs...>
+    {
+      using result_type = R;
+
+      constexpr overloaded_ret(Fs... fs) noexcept(
+          noexcept(overloaded<Fs...>{std::forward<Fs>(fs)...}))
+        : overloaded<Fs...>{std::forward<Fs>(fs)...}
+      {}
+
+      using overloaded<Fs...>::operator();
+    };
+
+    template <typename F1, typename... Fs>
+    constexpr overloaded<F1, Fs...> overload(F1&& f1, Fs&&... fs) noexcept(
+        noexcept(overloaded<F1, Fs...>{std::forward<F1>(f1), std::forward<Fs>(fs)...}))
+    {
+      return {std::forward<F1>(f1), std::forward<Fs>(fs)...};
+    }
+
+    template <typename R, typename... Fs>
+    constexpr overloaded_ret<R, Fs...> overload_ret(Fs&&... fs) noexcept(
+        noexcept(overloaded_ret<R, Fs...>{std::forward<Fs>(fs)...}))
+    {
+      return {std::forward<Fs>(fs)...};
+    }
+
+    template <bool, typename T, typename F>
+    struct conditional_impl
+    {
+      static constexpr F forward(T, F f) noexcept(noexcept(F(std::forward<F>(f))))
+      {
+        return std::forward<F>(f);
+      }
+    };
+
+    template <typename T, typename F>
+    struct conditional_impl<true, T, F>
+    {
+      static constexpr T forward(T t, F) noexcept(noexcept(T(std::forward<T>(t))))
+      {
+        return std::forward<T>(t);
+      }
+    };
+
+    template <bool B, typename T, typename F>
+    constexpr auto conditional(T t, F f)
+      noexcept(noexcept(conditional_impl<B, T, F>::forward(std::forward<T>(t), std::forward<F>(f))))
+      -> decltype(conditional_impl<B, T, F>::forward(std::forward<T>(t), std::forward<F>(f)))
+    {
+      return conditional_impl<B, T, F>::forward(std::forward<T>(t), std::forward<F>(f));
+    }
+
     template <typename LockablePtr, typename F, typename R, typename... Args>
     class callback_impl final : // inherit for empty-base optimisation
                                  private wrap_pointer_t<LockablePtr>
@@ -368,92 +448,92 @@ namespace util
       {}
 
       template <bool stored_internally>
-      class invoke_visitor
-      {
-      private:
-        friend class callback_impl;
-        invoke_visitor(const callback_impl& that) : that(that) {}
-        const callback_impl& that;
-
-      public:
-        using result_type = callback_ret<R>;
-
-        callback_ret<R> operator()(detail::callback_tag_invoke<Args...>& op) const
-        {
-          using ::util::acquire_lock;
-
-          // Casting away constness because 'mutable' isn't an option with the empty base optimization
-          F& f = const_cast<callback_impl&>(that);
-
-          if (auto i = acquire_lock(static_cast<const pointer_base&>(that)))
-          {
-            return callback_helper<Args...>::template do_invoke<R>(std::forward<decltype(i)>(i), f, std::move(op.args));
-          }
-          else
-          {
-            return {};
-          }
-        }
-
-        callback_ret<R> operator()(const callback_tag_is_valid& op) const noexcept
-        {
-          using ::util::acquire_lock;
-          const F& f = that;
-          op.ret = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const pointer_base&>(that)));
-          return {};
-        }
-
-        callback_ret<R> operator()(const callback_tag_move& op) const noexcept
-        {
-          assert(op.src != op.dst && "move constructing to the same address is illegal!");
-
-          if (stored_internally)
-          {
-            auto* const thatp = static_cast<callback_impl*>(op.src);
-            assert(thatp == &that && "move constructor doesn't apply to this type!");
-
-            ::new (op.dst) callback_impl{std::move(*thatp)};
-            thatp->~callback_impl();
-          }
-          else
-          {
-            auto*& thatp = *static_cast<callback_impl**>(op.src);
-            assert(thatp == &that && "move constructor doesn't apply to this type!");
-
-            *static_cast<callback_impl**>(op.dst) = thatp;
-            thatp = nullptr;
-          }
-          return {};
-        }
-
-        callback_ret<R> operator()(const callback_tag_clone& op) const
-        {
-          if (stored_internally)
-            ::new (op.dst) callback_impl{that};
-          else
-            *static_cast<callback_impl**>(op.dst) = new callback_impl{that};
-          return {};
-        }
-
-        callback_ret<R> operator()(const callback_tag_delete&) const
-        {
-          if (stored_internally)
-            that.~callback_impl();
-          else
-            delete &that;
-          return {};
-        }
-      };
-
-      template <bool stored_internally>
       static callback_ret<R> invoke_method(const void* s, callback_method<Args...>&& call)
       {
-        auto* const that = stored_internally
-          ? static_cast<const callback_impl*>(s)
-          : *static_cast<const callback_impl* const *>(s)
+        auto& that = stored_internally
+          ? *static_cast<const callback_impl*>(s)
+          : **static_cast<const callback_impl* const *>(s)
           ;
 
-        return boost::apply_visitor(invoke_visitor<stored_internally>{*that}, call);
+        return boost::apply_visitor(overload_ret<callback_ret<R>>(
+            [&that](detail::callback_tag_invoke<Args...>& op) -> callback_ret<R>
+            {
+              using ::util::acquire_lock;
+
+              // Casting away constness because 'mutable' isn't an option with the empty base optimization
+              F&                  f = const_cast<callback_impl&>(that);
+              const pointer_base& p = that;
+
+              if (auto i = acquire_lock(p))
+              {
+                return callback_helper<Args...>::template do_invoke<R>(std::forward<decltype(i)>(i), f, std::move(op.args));
+              }
+              else
+              {
+                return {};
+              }
+            }
+          , [&that](const callback_tag_is_valid& op) noexcept
+            {
+              using ::util::acquire_lock;
+
+              const F&            f = that;
+              const pointer_base& p = that;
+
+              op.ret = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(p));
+
+              return callback_ret<R>{};
+            }
+          , conditional<stored_internally>(
+              overload(
+                [&that](const callback_tag_move& op) noexcept
+                {
+                  assert(op.src != op.dst && "move constructing to the same address is illegal!");
+
+                  auto* const thatp = static_cast<callback_impl*>(op.src);
+                  assert(thatp == &that && "move constructor doesn't apply to this type!");
+
+                  ::new (op.dst) callback_impl{std::move(*thatp)};
+                  thatp->~callback_impl();
+
+                  return callback_ret<R>{};
+                }
+              , [&that](const callback_tag_clone& op)
+                {
+                  ::new (op.dst) callback_impl{that};
+                  return callback_ret<R>{};
+                }
+              , [&that](const callback_tag_delete&)
+                {
+                  that.~callback_impl();
+                  return callback_ret<R>{};
+                }
+              ), /* !stored_internally */ overload(
+                [&that](const callback_tag_move& op) noexcept
+                {
+                  assert(op.src != op.dst && "move constructing to the same address is illegal!");
+
+                  auto*& thatp = *static_cast<callback_impl**>(op.src);
+                  assert(thatp == &that && "move constructor doesn't apply to this type!");
+
+                  *static_cast<callback_impl**>(op.dst) = thatp;
+                  thatp = nullptr;
+
+                  return callback_ret<R>{};
+                }
+              , [&that](const callback_tag_clone& op)
+                {
+                  *static_cast<callback_impl**>(op.dst) = new callback_impl{that};
+                  return callback_ret<R>{};
+                }
+              , [&that](const callback_tag_delete&)
+                {
+                  delete &that;
+                  return callback_ret<R>{};
+                }
+              )
+            )
+          ), call);
       }
 
       template <typename R2, typename... Args2, typename Storage2, typename LockablePtr2, typename F2>
