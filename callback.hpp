@@ -422,10 +422,11 @@ namespace util
 
           if (callback_stored_internally<callback_impl, storage_t>::value)
           {
-            assert(sp == this && "move constructor doesn't apply to this type!");
+            auto* const that = static_cast<callback_impl*>(sp);
+            assert(that == this && "move constructor doesn't apply to this type!");
 
-            ::new (dp) callback_impl{std::move(*this)};
-            this->~callback_impl();
+            ::new (dp) callback_impl{std::move(*that)};
+            that->~callback_impl();
           }
           else
           {
