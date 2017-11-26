@@ -272,6 +272,17 @@ namespace util
       void* const dst;
     };
 
+    struct callback_tag_move_resize
+    {
+      explicit constexpr callback_tag_move_resize(void* src, void* dst, size_t size, size_t align, void (*&invoker)()) noexcept
+        : src(std::move(src)), dst(dst), size(size), align(align), invoker(invoker) {}
+      void* const src;
+      void* const dst;
+      size_t const size;
+      size_t const align;
+      void (*&invoker)();
+    };
+
     struct callback_tag_delete {};
 
     template <typename... Args>
@@ -279,6 +290,7 @@ namespace util
         callback_tag_invoke<Args...>
       , callback_tag_is_valid
       , callback_tag_move
+      , callback_tag_move_resize
       , callback_tag_clone
       , callback_tag_delete
       >;
@@ -426,6 +438,50 @@ namespace util
           return {};
         }
 
+        callback_ret<R> operator()(const callback_tag_move_resize& op) const
+        {
+          assert(op.src != op.dst && "move constructing to the same address is illegal!");
+
+          const bool dst_stored_internally = true
+            && (sizeof (callback_impl) <= op.size || std::is_empty<callback_impl>::value)
+            && (op.align       % alignof(callback_impl)) == 0
+            // external storage allows us to just move a pointer: that's guaranteed not to throw
+            && std::is_nothrow_move_constructible<callback_impl>::value
+            ;
+
+          op.invoker = reinterpret_cast<void (*)()>(dst_stored_internally
+              ? invoke_method<true> : invoke_method<false>);
+
+          if (stored_internally == dst_stored_internally)
+          {
+            return (*this)(callback_tag_move{op.src, op.dst});
+          }
+
+          if (stored_internally)
+          {
+            assert(!dst_stored_internally);
+
+            auto* const thatp = static_cast<callback_impl*>(op.src);
+            assert(thatp == &that && "move constructor doesn't apply to this type!");
+
+            assert(op.size >= sizeof(callback_impl*));
+            *static_cast<callback_impl**>(op.dst) = new callback_impl{std::move(*thatp)};
+            that.~callback_impl();
+          }
+          else
+          {
+            assert(dst_stored_internally);
+
+            auto*& thatp = *static_cast<callback_impl**>(op.src);
+            assert(thatp == &that && "move constructor doesn't apply to this type!");
+
+            ::new (op.dst) callback_impl{std::move(*thatp)};
+            thatp = nullptr;
+            delete &that;
+          }
+          return {};
+        }
+
         callback_ret<R> operator()(const callback_tag_clone& op) const
         {
           if (stored_internally)
@@ -507,6 +563,26 @@ namespace util
               other.invoker = nullptr;
             }
             return invoke;
+          }())
+      {
+      }
+
+      template <std::size_t FSBS
+        , typename = typename std::enable_if<
+           !std::is_same<callback<R(Args...), FSBS>, callback>::value // prevent nested type-erasure instead of copy construction
+        >::type>
+      callback(callback<R(Args...), FSBS> other)
+        : invoker([&]() -> decltype(invoker) {
+            if (other.invoker)
+            {
+              void (*new_invoker)() = nullptr;
+              other.invoker(&other.storage, detail::callback_tag_move_resize{
+                  &other.storage, &storage, sizeof(storage), alignof(decltype(storage)), new_invoker});
+              other.invoker = nullptr;
+              assert(new_invoker != nullptr);
+              return reinterpret_cast<decltype(invoker)>(new_invoker);
+            }
+            return nullptr;
           }())
       {
       }
@@ -609,6 +685,9 @@ namespace util
           SmallBufferSize
         , alignof(std::weak_ptr<void>)
         >::type                                   storage;
+
+      template <typename, std::size_t>
+      friend class callback;
   };
 
   template <typename ForwardRange, typename... Args>
@@ -664,7 +743,7 @@ int main()
   callback<void (int, char)> w{S{}};
   callback<void (int, char)> x(some_f);
   callback<void (int, char)> y{x};
-  callback<void (int, char)> z{std::move(x)};
+  callback<void (int, char), sizeof(void (*)())> z{std::move(x)};
 
   {
     auto s = std::make_shared<S>();
