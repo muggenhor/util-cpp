@@ -59,7 +59,7 @@ namespace util
 
   void to_address(bool) {}
 
-  template <typename FunctionSignature>
+  template <typename FunctionSignature, std::size_t SmallBufferSize = sizeof(void (std::true_type::*)()) + sizeof(std::weak_ptr<void>)>
   class callback;
 
   namespace detail
@@ -101,8 +101,8 @@ namespace util
     template <typename>
     struct is_callback_impl : std::false_type {};
 
-    template <typename FunctionSignature>
-    struct is_callback_impl<callback<FunctionSignature>> : std::true_type {};
+    template <typename FunctionSignature, std::size_t SmallBufferSize>
+    struct is_callback_impl<callback<FunctionSignature, SmallBufferSize>> : std::true_type {};
 
     template <typename T>
     using is_callback = is_callback_impl<typename std::decay<T>::type>;
@@ -482,8 +482,8 @@ namespace util
     }
   }
 
-  template <typename R, typename... Args>
-  class callback<R(Args...)>
+  template <std::size_t SmallBufferSize, typename R, typename... Args>
+  class callback<R(Args...), SmallBufferSize>
   {
     public:
       constexpr callback() noexcept = default;
@@ -527,15 +527,15 @@ namespace util
       {
       }
 
-      template <typename FR, typename... FArgs
-        , typename = typename std::result_of<callback<FR(FArgs...)>(Args...)>::type
+      template <typename FR, typename... FArgs, std::size_t FSBS
+        , typename = typename std::result_of<callback<FR(FArgs...), FSBS>(Args...)>::type
         , typename = typename std::enable_if<
-           !std::is_same<callback<FR(FArgs...)>, callback>::value // prevent nested type-erasure instead of copy construction
+           !std::is_same<callback<FR(FArgs...), FSBS>, callback>::value // prevent nested type-erasure instead of copy construction
             && (std::is_convertible<FR, R>::value
              || std::is_void<R>::value
          )>::type>
-      explicit callback(callback<FR(FArgs...)> f)
-        : invoker(detail::construct_callback_impl<R, Args...>(storage, detail::always_valid_ptr{}, std::forward<callback<FR(FArgs...)>>(f)))
+      explicit callback(callback<FR(FArgs...), FSBS> f)
+        : invoker(detail::construct_callback_impl<R, Args...>(storage, detail::always_valid_ptr{}, std::move(f)))
       {
       }
 
@@ -606,7 +606,7 @@ namespace util
     private:
       detail::callback_method_invoker<R, Args...> invoker = nullptr;
       typename std::aligned_storage<
-          sizeof(void (callback::*)()) + sizeof(std::weak_ptr<void>)
+          SmallBufferSize
         , alignof(std::weak_ptr<void>)
         >::type                                   storage;
   };
