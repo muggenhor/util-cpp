@@ -129,7 +129,7 @@ namespace util
       typename std::enable_if<is_callable<F, Args...>::value && !is_callback<F>::value, callback_ret<R>>::type
       static do_invoke(F&& f, Args&&... args)
       {
-        return static_cast<R>(std::forward<F>(f)(std::forward<Args>(args)...));
+        return std::forward<F>(f)(std::forward<Args>(args)...);
       }
 
       template <typename F, typename... Args>
@@ -158,7 +158,7 @@ namespace util
       template <typename FR, typename O, typename... Args>
       static callback_ret<R> do_invoke(O* that, FR O::* f, Args&&... args)
       {
-        return static_cast<R>((that->*f)(std::forward<Args>(args)...));
+        return (that->*f)(std::forward<Args>(args)...);
       }
     };
 
