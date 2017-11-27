@@ -384,9 +384,15 @@ namespace util
       using pointer_base = wrap_pointer_t<LockablePtr>;
       using functor_base = ebo_t<F>;
 
-      callback_impl(LockablePtr p, F f)
-        : pointer_base(std::forward<LockablePtr>(p))
-        , functor_base(std::forward<F>(f))
+      template <typename LockablePtr2, typename F2
+        , typename = typename std::enable_if<
+              std::is_constructible<LockablePtr, LockablePtr2&&>::value
+           && std::is_constructible<F          , F2          &&>::value
+          >::type
+        >
+      callback_impl(LockablePtr2&& p, F2&& f)
+        : pointer_base(std::forward<LockablePtr2>(p))
+        , functor_base(std::forward<F2>(f))
       {}
 
       template <bool stored_internally>
@@ -533,11 +539,11 @@ namespace util
       }
 
       template <typename R2, typename... Args2, typename Storage2, typename LockablePtr2, typename F2>
-      friend callback_method_invoker<R2, Args2...> construct_callback_impl(Storage2& s, LockablePtr2 p, F2 f);
+      friend callback_method_invoker<R2, Args2...> construct_callback_impl(Storage2& s, LockablePtr2&& p, F2&& f);
     };
 
     template <typename R, typename... Args, typename Storage, typename LockablePtr, typename F>
-    callback_method_invoker<R, Args...> construct_callback_impl(Storage& s, LockablePtr p, F f)
+    callback_method_invoker<R, Args...> construct_callback_impl(Storage& s, LockablePtr&& p, F&& f)
     {
       void* const dst = &s;
 
@@ -689,7 +695,7 @@ namespace util
             && (std::is_convertible<typename std::result_of<F(Args...)>::type, R>::value
              || std::is_void<R>::value
          )>::type>
-      callback(F f)
+      callback(F&& f)
         : invoker(detail::construct_callback_impl<R, Args...>(this->storage(), detail::always_valid_ptr{}, std::forward<F>(f)))
       {
       }
@@ -718,7 +724,7 @@ namespace util
             std::is_convertible<typename std::result_of<F(Args...)>::type, R>::value
          || std::is_void<R>::value
          >::type>
-      callback(F f, LockablePtr p)
+      callback(F&& f, LockablePtr&& p)
         : invoker(acquire_lock(p)
                 ? detail::construct_callback_impl<R, Args...>(this->storage(), std::forward<LockablePtr>(p), std::forward<F>(f))
                 : nullptr
@@ -727,9 +733,9 @@ namespace util
       }
 
       template <typename LockablePtr, typename F>
-      callback(F f, LockablePtr p
+      callback(F&& f, LockablePtr&& p
           , typename std::enable_if<
-               std::is_convertible<typename std::result_of<F(typename std::pointer_traits<LockablePtr>::element_type*, Args...)>::type, R>::value
+               std::is_convertible<typename std::result_of<F(typename std::pointer_traits<typename std::decay<LockablePtr>::type>::element_type*, Args...)>::type, R>::value
             || std::is_void<R>::value
             >::type* = nullptr)
         : invoker(acquire_lock(p)
