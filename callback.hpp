@@ -259,6 +259,15 @@ namespace util
       bool& ret;
     };
 
+    struct callback_tag_determine_used_storage_size
+    {
+      constexpr callback_tag_determine_used_storage_size(size_t& used_storage_size) noexcept
+        : used_storage_size(used_storage_size)
+      {}
+
+      size_t& used_storage_size;
+    };
+
     struct callback_tag_clone
     {
       explicit constexpr callback_tag_clone(void* dst) noexcept : dst(dst) {}
@@ -289,6 +298,7 @@ namespace util
     using callback_method = boost::variant<
         callback_tag_invoke<Args...>
       , callback_tag_is_valid
+      , callback_tag_determine_used_storage_size
       , callback_tag_move
       , callback_tag_move_resize
       , callback_tag_clone
@@ -412,6 +422,15 @@ namespace util
           using ::util::acquire_lock;
           const F& f = that;
           op.ret = convert_to_bool_or_true(f) && static_cast<bool>(acquire_lock(static_cast<const pointer_base&>(that)));
+          return {};
+        }
+
+        callback_ret<R> operator()(const callback_tag_determine_used_storage_size& op) const noexcept
+        {
+          op.used_storage_size = stored_internally
+            ? (std::is_empty<callback_impl>::value ? 0 : sizeof(callback_impl))
+            : sizeof(callback_impl*)
+            ;
           return {};
         }
 
@@ -543,6 +562,37 @@ namespace util
       return impl_t::template invoke_method<stored_internally>;
     }
 
+    template <typename R, typename... Args, typename Storage, typename LockablePtr, typename FS, std::size_t FSBS>
+    callback_method_invoker<R, Args...> construct_callback_impl(Storage& s, LockablePtr p, callback<FS, FSBS>&& f, const std::size_t used_storage_size, std::integral_constant<std::size_t, 0>)
+    {
+      // Termination condition
+      assert(used_storage_size == 0);
+      return construct_callback_impl<R, Args...>(s, std::move(p), callback<FS, 0>{std::move(f)});
+    }
+
+    template <typename R, typename... Args, typename Storage, typename LockablePtr, std::size_t SBS, typename FS, std::size_t FSBS>
+    callback_method_invoker<R, Args...> construct_callback_impl(Storage& s, LockablePtr p, callback<FS, FSBS>&& f, const std::size_t used_storage_size, std::integral_constant<std::size_t, SBS> current_size)
+    {
+      const auto needed_blocks = (used_storage_size + Storage::align - 1) / Storage::align;
+      constexpr auto cur_blocks = (current_size + Storage::align - 1) / Storage::align;
+
+      if (needed_blocks < cur_blocks)
+        return construct_callback_impl<R, Args...>(s, std::move(p), std::move(f), used_storage_size, std::integral_constant<std::size_t, (cur_blocks - 1) * Storage::align>{});
+
+      // Fall back to pointer size if it won't fit in the storage area anyway
+      if (used_storage_size > current_size)
+        return construct_callback_impl<R, Args...>(s, std::move(p), callback<FS, sizeof(void*)>{std::move(f)});
+
+      // Seems we've found our size: go with it
+      return construct_callback_impl<R, Args...>(s, std::move(p), callback<FS, current_size>{std::move(f)});
+    }
+
+    template <typename R, typename... Args, typename Storage, typename LockablePtr, typename FS, std::size_t FSBS>
+    callback_method_invoker<R, Args...> construct_callback_impl(Storage& s, LockablePtr p, callback<FS, FSBS>&& f, const std::size_t used_storage_size)
+    {
+      return construct_callback_impl<R, Args...>(s, std::move(p), std::move(f), used_storage_size, std::integral_constant<std::size_t, Storage::size>{});
+    }
+
     template <std::size_t SmallBufferSize>
     class callback_storage
     {
@@ -652,7 +702,14 @@ namespace util
              || std::is_void<R>::value
          )>::type>
       explicit callback(callback<FR(FArgs...), FSBS> f)
-        : invoker(detail::construct_callback_impl<R, Args...>(this->storage(), detail::always_valid_ptr{}, std::move(f)))
+        : invoker([&]() -> decltype(invoker) {
+            if (!f.invoker)
+              return nullptr;
+            size_t used_storage_size = 0;
+            f.invoker(f.data(), detail::callback_tag_determine_used_storage_size{used_storage_size});
+
+            return detail::construct_callback_impl<R, Args...>(this->storage(), detail::always_valid_ptr{}, std::move(f), used_storage_size);
+          }())
       {
       }
 
