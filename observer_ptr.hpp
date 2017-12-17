@@ -16,6 +16,9 @@
  * <https://www.gnu.org/licenses/>.
  */
 
+// NOTE: While similar in intent to N3840: this is _not_ that observer_ptr because this, unlike that
+// proposal, takes care of clearing pointers preventing dangling observer_ptr instances.
+
 #ifndef INCLUDED_OBSERVER_PTR_HPP
 #define INCLUDED_OBSERVER_PTR_HPP
 
