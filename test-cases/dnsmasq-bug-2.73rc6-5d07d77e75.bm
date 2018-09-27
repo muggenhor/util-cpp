@@ -1,0 +1,14 @@
+# To be processed by https://github.com/dadadel/binmake.git
+# This triggered a bug in dnsmasq 2.73rc6 that was fixed with 2.73rc8
+# http://thekelleys.org.uk/gitweb/?p=dnsmasq.git;a=commitdiff;h=5d07d77e75e0f02bc0a8f6029ffbc8b371fa804e
+
+big-endian
+decimal
+
+23[2]
+0[2]
+%x0000
+1[2] 0[2] 0[2] 0[2]
+ 8 "wwwwwwww"
+# label pointer pointing to start of this domain-name: infinite loop
+%xC00C

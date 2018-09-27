@@ -238,6 +238,7 @@ namespace dns
           , gsl::span<const std::uint8_t> name_frame
         )
     {
+      unsigned pointer_labels_followed = 0;
       std::vector<std::string_view> labels;
       //const auto label = std::regex("^[A-Za-z](?:[-A-Za-z0-9]{0,61}[A-Za-z0-9])?$");
       bool name_is_compressed = false;
@@ -263,6 +264,9 @@ namespace dns
           case 0b1100'0000:
           {
             if (pos.empty())
+              return std::nullopt;
+            // prevent infinite loops
+            if (pointer_labels_followed++ > frame.size() / 4)
               return std::nullopt;
 
             const auto offset = (static_cast<std::uint16_t>(label_size & 0x3fU) << 8U)
