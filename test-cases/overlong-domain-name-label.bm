@@ -1,0 +1,16 @@
+# To be processed by https://github.com/dadadel/binmake.git
+
+big-endian
+decimal
+
+29[2]
+%xD873[2]
+%x0120
+1[2] 0[2] 0[2] 0[2]
+ 7 "example"
+# Overlong label size. Exactly large enough to consume the remainder of the packet. This triggered
+# a bug where the next label's size was attempted to be read from one byte beyond the frame.
+ 8 "org"
+ 0
+# ANY IN
+255[2] 1[2]

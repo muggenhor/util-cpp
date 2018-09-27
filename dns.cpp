@@ -240,6 +240,9 @@ namespace dns
       auto pos = index;
       for (;;)
       {
+        if (pos >= frame.size())
+          return std::nullopt;
+
         const auto label_size = frame[pos++];
 
         // Handle name pointers, which terminate a sequence of labels
