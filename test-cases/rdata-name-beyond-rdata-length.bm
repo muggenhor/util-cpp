@@ -1,0 +1,24 @@
+# To be processed by https://github.com/dadadel/binmake.git
+
+big-endian
+decimal
+
+30[2]
+%xD873[2]
+%x0120
+1[2] 0[2] 1[2] 0[2]
+ 0
+# ANY IN
+255[2] 1[2]
+
+ 0
+# SOA IN
+6[2] 1[2]
+0[4]
+# RDLENGTH:
+#  * shorter than the size consumed by two names in the SOA record
+#  * these names still fit in the frame boundary
+# -> triggers bug when frame boundary is checked but RDATA boundary isn't
+0[2]
+ 0
+ 0

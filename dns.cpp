@@ -232,18 +232,23 @@ namespace dns
 
   namespace
   {
-    std::optional<std::pair<std::vector<std::string_view>, std::uint16_t>> parse_domain_name(const gsl::span<const std::uint8_t> frame, std::uint16_t index)
+    std::optional<std::pair<std::vector<std::string_view>, gsl::span<const std::uint8_t> /* unused remainder of name_frame */>>
+      parse_domain_name(
+            const gsl::span<const std::uint8_t> frame
+          , gsl::span<const std::uint8_t> name_frame
+        )
     {
       std::vector<std::string_view> labels;
       //const auto label = std::regex("^[A-Za-z](?:[-A-Za-z0-9]{0,61}[A-Za-z0-9])?$");
       bool name_is_compressed = false;
-      auto pos = index;
+      auto pos = name_frame;
       for (;;)
       {
-        if (pos >= frame.size())
+        if (pos.empty())
           return std::nullopt;
 
-        const auto label_size = frame[pos++];
+        const auto label_size = pos[0];
+        pos = pos.subspan(1);
         const auto label_type = [&] {
             if (const auto type = static_cast<std::uint8_t>(label_size & 0b1100'0000);
                 type == 0b0100'0000)
@@ -257,31 +262,32 @@ namespace dns
           // Handle name pointers, which terminate a sequence of labels
           case 0b1100'0000:
           {
-            if (pos >= frame.size())
+            if (pos.empty())
               return std::nullopt;
 
             const auto offset = (static_cast<std::uint16_t>(label_size & 0x3fU) << 8U)
-                              | ((frame[pos++] & 0xffU) << 0U)
+                              | ((pos[0] & 0xffU) << 0U)
                               ;
+            pos = pos.subspan(1);
             if (!name_is_compressed)
             {
-              index = pos;
+              name_frame = pos;
               name_is_compressed = true;
             }
             if (offset >= frame.size())
               return std::nullopt;
-            pos = offset;
+            pos = frame.subspan(offset);
             break;
           }
           case 0b0000'0000:
           {
-            if (pos + label_size > frame.size())
+            if (pos.size() < label_size)
               return std::nullopt;
             if (label_size <= 0)
               goto end_loop;
 
-            labels.emplace_back(reinterpret_cast<const char*>(&frame[pos]), label_size);
-            pos += label_size;
+            labels.emplace_back(reinterpret_cast<const char*>(pos.data()), label_size);
+            pos = pos.subspan(label_size);
             break;
           }
           default:
@@ -290,9 +296,9 @@ namespace dns
       }
 end_loop:
       if (!name_is_compressed)
-        index = pos;
+        name_frame = pos;
 
-      return std::make_pair(std::move(labels), index);
+      return std::make_pair(std::move(labels), name_frame);
     }
   }
 
@@ -337,10 +343,10 @@ end_loop:
         return std::nullopt;
 
       std::vector<std::string_view> labels;
-      if (auto name = parse_domain_name(frame, cur); name)
+      if (auto name = parse_domain_name(frame, frame.subspan(cur)); name)
       {
         labels = std::move(name->first);
-        cur = name->second;
+        cur = name->second.data() - frame.data();
       }
       else
       {
@@ -377,10 +383,10 @@ end_loop:
         return std::nullopt;
 
       std::vector<std::string_view> labels;
-      if (auto name = parse_domain_name(frame, cur); name)
+      if (auto name = parse_domain_name(frame, frame.subspan(cur)); name)
       {
         labels = std::move(name->first);
-        cur = name->second;
+        cur = name->second.data() - frame.data();
       }
       else
       {
@@ -415,26 +421,28 @@ end_loop:
        || type == rr_type::MR)
 #pragma GCC diagnostic pop
       {
-        if (auto name = parse_domain_name(frame, cur + 10); name)
+        if (auto name = parse_domain_name(frame, rdata_frame); name)
           rdata = std::move(name->first);
         else
           return std::nullopt;
       }
       else if (type == rr_type::MX)
       {
+        if (rdata_frame.size() < 2)
+          return std::nullopt;
         const auto preference = static_cast<std::uint16_t>((rdata_frame[0] << 8U) | rdata_frame[1]);
-        if (auto exchange = parse_domain_name(frame, cur + 12); exchange)
+        if (auto exchange = parse_domain_name(frame, rdata_frame.subspan(2)); exchange)
           rdata = mx_rdata{preference, std::move(exchange->first)};
         else
           return std::nullopt;
       }
       else if (type == rr_type::SOA)
       {
-        auto authority  = parse_domain_name(frame, cur + 10);
+        auto authority  = parse_domain_name(frame, rdata_frame);
         auto hostmaster = authority ? parse_domain_name(frame, authority->second) : authority;
         if (!authority || !hostmaster)
           return std::nullopt;
-        rdata_frame = rdata_frame.subspan(hostmaster->second - cur - 10);
+        rdata_frame = hostmaster->second;
         if (rdata_frame.size() < 20)
           return std::nullopt;
         const auto serial = static_cast<std::uint32_t>(
