@@ -244,35 +244,51 @@ namespace dns
           return std::nullopt;
 
         const auto label_size = frame[pos++];
+        const auto label_type = [&] {
+            if (const auto type = static_cast<std::uint8_t>(label_size & 0b1100'0000);
+                type == 0b0100'0000)
+              return label_size;
+            else
+              return type;
+          }();
 
-        // Handle name pointers, which terminate a sequence of labels
-        if ((label_size & 0xc0U) == 0xc0U)
+        switch (label_type)
         {
-          if (pos >= frame.size())
-            return std::nullopt;
-
-          const auto offset = (static_cast<std::uint16_t>(label_size & 0x3fU) << 8U)
-                            | ((frame[pos++] & 0xffU) << 0U)
-                            ;
-          if (!name_is_compressed)
+          // Handle name pointers, which terminate a sequence of labels
+          case 0b1100'0000:
           {
-            index = pos;
-            name_is_compressed = true;
+            if (pos >= frame.size())
+              return std::nullopt;
+
+            const auto offset = (static_cast<std::uint16_t>(label_size & 0x3fU) << 8U)
+                              | ((frame[pos++] & 0xffU) << 0U)
+                              ;
+            if (!name_is_compressed)
+            {
+              index = pos;
+              name_is_compressed = true;
+            }
+            if (offset >= frame.size())
+              return std::nullopt;
+            pos = offset;
+            break;
           }
-          if (offset >= frame.size())
+          case 0b0000'0000:
+          {
+            if (pos + label_size > frame.size())
+              return std::nullopt;
+            if (label_size <= 0)
+              goto end_loop;
+
+            labels.emplace_back(reinterpret_cast<const char*>(&frame[pos]), label_size);
+            pos += label_size;
+            break;
+          }
+          default:
             return std::nullopt;
-          pos = offset;
-          continue;
         }
-
-        if (pos + label_size > frame.size())
-          return std::nullopt;
-        if (label_size <= 0)
-          break;
-
-        labels.emplace_back(reinterpret_cast<const char*>(&frame[pos]), label_size);
-        pos += label_size;
       }
+end_loop:
       if (!name_is_compressed)
         index = pos;
 
