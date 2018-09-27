@@ -1,0 +1,32 @@
+# To be processed by https://github.com/dadadel/binmake.git
+
+big-endian
+decimal
+
+44[2]
+%xFFFF[2]
+%x0120
+1[2] 0[2] 0[2] 1[2]
+ 7 "example"
+ 3 "org"
+ 0
+# ANY IN
+255[2] 1[2]
+
+ 0
+# OPT
+41[2]
+4096[2]
+0 0 %b1000000000000000
+4[2]
+
+hex
+# RDATA filled with this repeated:
+#                 16-bit    OPTION-CODE
+# followed by     16-bit    OPTION-LENGTH
+# followed by length-octets OPTION-DATA
+
+# Except that an off-by one error leaves the 0x55 bytes as gaps that should have been read as part
+# of the OPTION-CODE but aren't read at all. This propagates and moves the reading of OPTION-LENGTH
+# as well, causing out of bounds access for the last OPTION-LENGTH.
+44 55 00 00

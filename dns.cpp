@@ -736,11 +736,11 @@ end_loop:
             return std::nullopt;
           const auto code = static_cast<std::uint16_t>(
                 static_cast<std::uint16_t>(rdata_frame[0] & 0xffU) <<  8U
-              | static_cast<std::uint16_t>(rdata_frame[2] & 0xffU) <<  0U
+              | static_cast<std::uint16_t>(rdata_frame[1] & 0xffU) <<  0U
               );
           const auto length = static_cast<std::uint16_t>(
-                static_cast<std::uint16_t>(rdata_frame[3] & 0xffU) <<  8U
-              | static_cast<std::uint16_t>(rdata_frame[4] & 0xffU) <<  0U
+                static_cast<std::uint16_t>(rdata_frame[2] & 0xffU) <<  8U
+              | static_cast<std::uint16_t>(rdata_frame[3] & 0xffU) <<  0U
               );
           if (rdata_frame.size() < 4 + length)
             return std::nullopt;
