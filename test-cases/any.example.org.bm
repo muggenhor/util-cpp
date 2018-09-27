@@ -1,0 +1,499 @@
+# To be processed by https://github.com/dadadel/binmake.git
+
+big-endian
+decimal
+
+#### dig @$(dig +short org NS | head -1) +dnssec +adflag +tcp example.org. ANY
+40[2]
+%xD873 %x0120
+1[2] 0[2] 0[2] 1[2]
+
+ 7 "example"
+ 3 "org"
+ 0
+# ANY IN
+255[2] 1[2]
+
+ 0
+# OPT
+41[2]
+4096[2]
+0 0 %b1000000000000000
+0[2]
+
+### response
+503[2]
+%xD873 %x8100
+1[2] 0[2] 9[2] 1[2]
+
+ 7 "example"
+ 3 "org"
+ 0
+# ANY IN
+255[2] 1[2]
+
+%xC00C
+# NS IN
+2[2] 1[2]
+86400[4]
+20[2]
+ 1 "a"
+12 "iana-servers"
+ 3 "net"
+ 0
+
+%xC00C
+# NS IN
+2[2] 1[2]
+86400[4]
+4[2]
+ 1 "b"
+%xC02B
+
+%xC00C
+# DS IN
+43[2] 1[2]
+86400[4]
+36[2]
+# <key-tag> RSASHA256 SHA-256
+%x9394 8 2
+%xD9 %x6A %xFA %x90 %x22 %x00 %x0D %x36 %x8B %x5F %x49 %x78 %x77 %xDF %x28 %x9A
+%x1E %x9A %x13 %xA1 %xAB %x1F %x97 %xBC %x1B %xF4 %xD5 %xDE %x16 %x87 %x91 %x34
+
+%xC00C
+# DS IN
+43[2] 1[2]
+86400[4]
+24[2]
+# <key-tag> RSASHA256 SHA-1
+%x0D45 8 1
+%xDE %xE1 %x03 %x45 %x94 %x2C %x98 %x71 %x1E %xB0 %x58 %xB2 %x5A %x74 %x9E %xE3
+%x42 %xFC %xE1 %xDC
+
+%xC00C
+# DS IN
+43[2] 1[2]
+86400[4]
+36[2]
+# <key-tag> RSASHA256 SHA-256
+%x0D45 8 2
+%xED %x11 %x68 %x60 %x4B %xC6 %xA1 %x40 %x68 %xB9 %x90 %x54 %x01 %xE6 %x26 %x98
+%xBB %x36 %x63 %xB6 %xEC %x20 %x73 %xEB %xD3 %x59 %x9B %x88 %x2A %x78 %x5B %xF6
+
+%xC00C
+# DS IN
+43[2] 1[2]
+86400[4]
+24[2]
+# <key-tag> RSASHA256 SHA-1
+%x7B65 8 1
+%x7B %x83 %x70 %x00 %x28 %x75 %xDD %xA7 %x81 %x39 %x0A %x8E %x58 %x6C %x31 %x49
+%x38 %x47 %xD9 %xBC
+
+%xC00C
+# DS IN
+43[2] 1[2]
+86400[4]
+36[2]
+# <key-tag> RSASHA256 SHA-256
+%x7B65 8 2
+%x3F %xDC %x4C %x11 %xFA %x3A %xD3 %x53 %x5E %xA8 %xC1 %xCE %x3E %xAF %x7B %xFA
+%x5C %xA9 %xAE %x8A %x83 %x4D %x98 %xFE %xE1 %x00 %x85 %xCF %xAE %xB6 %x25 %xAA
+
+%xC00C
+# DS IN
+43[2] 1[2]
+86400[4]
+24[2]
+# <key-tag> RSASHA256 SHA-1
+%x9394 8 1
+%xB4 %xA5 %xCC %xE8 %xD8 %x2D %xC5 %x85 %xE3 %x27 %xE5 %x89 %x6E %xAE %x82 %xE0
+%xB9 %xA7 %x6D %xC6
+
+%xC00C
+# RRSIG IN
+46[2] 1[2]
+86400[4]
+151[2]
+# DS RSASHA1-NSEC3-SHA1 2
+43[2] 7 2
+86400[4] 1539703730[4] 1537885730[4]
+%x0746
+ 3 "org"
+ 0
+%x5E %x43 %xF7 %x8F %x79 %x32 %x2C %x4D %x1C %x1A %x86 %xCE %xE6 %x8C %x46 %x25
+%x2A %xFE %xCE %x02 %xE3 %xA8 %x47 %xFD %x5F %x5E %x7B %x61 %x6C %x39 %x48 %xE2
+%x06 %xE1 %x9B %x93 %xB6 %x42 %x24 %xF4 %x63 %x38 %x0D %x2C %xC1 %x63 %x29 %xED
+%xD5 %x63 %xCA %x46 %x42 %xAA %x70 %xB6 %x54 %x8B %x9A %xE6 %x33 %x63 %x99 %xFD
+%xF6 %x60 %xE3 %x93 %x49 %x44 %xFC %x92 %x3D %xEA %x4E %x22 %x2E %xC2 %xD4 %x84
+%x33 %x96 %xEE %x7D %xAA %xD1 %x65 %x69 %xA3 %x77 %x1C %x30 %x2A %x2F %x5E %xDE
+%x04 %x35 %x17 %x2E %x16 %x45 %x93 %xC1 %x22 %x2C %xBE %x44 %x29 %xF1 %xBA %x7C
+%x92 %x80 %x9E %xB5 %x63 %x74 %x2F %xEF %x16 %x93 %x50 %xB2 %x6D %xF0 %x55 %xAB
+%x00 %x00 %x29 %x10 %x00 %x00 %x00 %x80 %x00 %x00 %x00
+
+#### dig @$(dig +short example.org NS | head -1) +dnssec +adflag +tcp example.org. ANY
+40[2]
+%x1D43 %x0120
+1[2] 0[2] 0[2] 1[2]
+
+ 7 "example"
+ 3 "org"
+ 0
+# ANY IN
+255[2] 1[2]
+
+ 0
+# OPT
+41[2]
+4096[2]
+0 0 %b1000000000000000
+0[2]
+
+### response
+2720[2]
+%x1D43 %x8500
+1[2] 19[2] 0[2] 1[2]
+
+ 7 "example"
+ 3 "org"
+ 0
+# ANY IN
+255[2] 1[2]
+
+%xC00C
+# SOA IN
+6[2] 1[2]
+3600[4]
+42[2]
+ 3 "sns"
+ 3 "dns"
+ 5 "icann"
+%xC014
+ 3 "noc"
+%xC02D
+2018080123[4] 7200[4] 3600[4] 1209600[4] 3600[4]
+
+%xC00C
+# RRSIG IN
+46[2] 1[2]
+86400[4]
+159[2]
+# A RSASHA256 2
+1[2] 8 2
+86400[4] 1538849178[4] 1536992410[4]
+%xA450
+ 7 "example"
+ 3 "org"
+ 0
+%x8C %x0B %x12 %xC9 %xF3 %xBF %x2A %x6E %xE0 %x2B %xC4 %xBA %x08 %x75 %x3F %x9C
+%x68 %x15 %x9F %x92 %x56 %x32 %x6B %xE1 %xFC %x51 %xC2 %xD9 %xB2 %xCA %x48 %xDE
+%x4A %xA8 %x07 %xE9 %xE3 %xD3 %xDB %xBE %x26 %x2A %xD5 %x83 %x45 %xD8 %x95 %x8C
+%x38 %x3E %xE6 %xB4 %x58 %xDC %xD4 %xF8 %xA8 %x69 %x5B %x07 %xB4 %xE4 %xF2 %xC4
+%x59 %xA7 %x24 %x23 %x36 %x88 %xBA %xDB %xFD %x4F %x45 %xA5 %xB8 %x62 %x6E %x8D
+%x46 %xB6 %xCF %x40 %x6B %x2F %x83 %x79 %x12 %xA1 %x29 %xC4 %xD8 %x5B %xAC %x57
+%x64 %x56 %x52 %x3B %x5F %x89 %x94 %x38 %x4E %x79 %x86 %xA8 %x49 %xAD %x58 %x43
+%xEB %x41 %xBB %x93 %xE8 %x67 %xE3 %x8D %x9A %xA6 %x94 %x56 %x96 %x8D %x63 %x34
+
+%xC00C
+# RRSIG IN
+46[2] 1[2]
+86400[4]
+159[2]
+# NS RSASHA256 2
+2[2] 8 2
+86400[4] 1538792921[4] 1536963610[4]
+%xA450
+ 7 "example"
+ 3 "org"
+ 0
+%x7D %x48 %xEE %x64 %x5D %xBD %xF6 %x32 %x32 %x72 %xA1 %xE5 %x06 %x89 %x57 %x76
+%x9A %xA8 %xCF %x0C %x6C %x57 %x9B %xE0 %xB1 %xDC %xCD %x9A %x49 %x0A %x0A %x71
+%xDC %x58 %xB8 %x6F %xB4 %x5D %xAD %x45 %x8F %x25 %x4D %x33 %x3B %xBB %xD8 %x4C
+%x46 %x42 %x9E %x01 %x28 %x19 %x58 %xBE %xD9 %xDF %xEE %xA2 %x12 %x9C %x64 %x7D
+%x7F %x8A %xE8 %xFF %xF6 %xA6 %xAA %x07 %xAA %x39 %x07 %xF4 %x50 %xA2 %x41 %x1D
+%xD8 %xC1 %x1C %xF3 %x96 %xCA %x5F %xC2 %x10 %x0F %x8E %x91 %x65 %xB0 %x25 %x5D
+%xE5 %x3E %xF3 %x54 %xD8 %xC0 %x43 %x21 %x36 %x60 %xB7 %x14 %x05 %xAD %xFD %x49
+%x6C %x62 %x26 %x0B %x52 %x94 %x57 %x1F %xF8 %xF3 %xD0 %x8C %xF6 %x72 %x9C %x05
+
+%xC00C
+# RRSIG IN
+46[2] 1[2]
+3600[4]
+159[2]
+# SOA RSASHA256 2
+6[2] 8 2
+3600[4] 1538894957[4] 1537050010[4]
+%xA450
+ 7 "example"
+ 3 "org"
+ 0
+%x1D %x52 %xDF %x56 %xD8 %x1E %xDF %x41 %x23 %x55 %x00 %xFF %xA9 %xEE %xF5 %xB6
+%x0D %x0C %xE0 %xFD %x8D %x86 %xFC %x78 %x0F %x3E %xC6 %x57 %x8A %x1A %xF6 %xD1
+%x9D %xB5 %xF5 %xC5 %x04 %x34 %x7C %xF1 %x60 %x94 %xA5 %x88 %xBE %x80 %xB8 %x93
+%x92 %x9E %x17 %xAA %x78 %x5A %x1C %xC9 %x40 %x3D %x68 %x3E %xEA %xDE %x77 %x1B
+%xAF %xE9 %xB1 %x7C %x62 %x6B %xBE %x9B %x81 %x36 %x7F %x80 %xCF %x03 %x2C %x4A
+%xC5 %x2E %xCF %x62 %x3F %xAC %x34 %x1E %xDE %x80 %xD6 %xAF %xEE %x17 %xB3 %x45
+%x56 %x85 %x44 %xF9 %xE0 %x4E %x77 %x95 %xF7 %xD1 %xDD %x91 %x57 %x44 %xA5 %xEF
+%x0D %xA8 %xB0 %x49 %x6A %x75 %xF1 %xB7 %x6A %xB2 %x6C %x94 %xDB %xDA %x27 %x7A
+
+%xC00C
+# RRSIG IN
+46[2] 1[2]
+86400[4]
+159[2]
+# TXT RSASHA256 2
+16[2] 8 2
+86400[4] 1538779544[4] 1536934810[4]
+%xA450
+ 7 "example"
+ 3 "org"
+ 0
+%x3B %x71 %x25 %x15 %x17 %xDC %xAC %xD4 %x0C %xD5 %xC8 %x1B %xA9 %xD3 %x6C %x29
+%xAF %x9F %xBA %x10 %x24 %x29 %x4E %x29 %x50 %x6B %x5D %x6A %xA0 %xD4 %xE3 %xE0
+%xAA %x0D %x8D %xFE %xA2 %xA7 %x63 %x6E %x2B %xD7 %x44 %xB1 %x41 %x0F %x08 %xD8
+%x69 %x8C %x4E %x6B %xF2 %xAC %x67 %x3D %xC6 %x3E %x6D %x56 %xA9 %x80 %x67 %x01
+%xBC %xEC %x60 %x94 %xCB %x20 %x30 %x64 %x73 %x75 %xC7 %x9D %x43 %xEC %x94 %x7C
+%xCF %x9B %xF0 %xDD %xBE %x05 %xC6 %x5A %x3F %x8B %xFA %x65 %xEE %xCB %x0D %xDF
+%x13 %x25 %x26 %xC7 %xA4 %x0C %xE6 %xB2 %xFC %x3A %x49 %xF2 %x66 %x4A %xA3 %x63
+%xD8 %x81 %x90 %x6F %x42 %x15 %xAD %x17 %x78 %x79 %x93 %xAB %x61 %x2F %xF7 %xAB
+
+%xC00C
+# RRSIG IN
+46[2] 1[2]
+86400[4]
+159[2]
+# AAAA RSASHA256 2
+28[2] 8 2
+86400[4] 1538754638[4] 1536978010[4]
+%xA450
+ 7 "example"
+ 3 "org"
+ 0
+%x39 %xF7 %xBA %x40 %xFD %x0F %x17 %x7C %x61 %x0B %xCB %xEB %xEA %xF8 %xBC %x92
+%xBB %x5F %xDF %xEE %x3C %xD6 %x94 %x21 %x27 %x0F %x5F %x3F %x2B %x1E %xF1 %xC4
+%x33 %xF7 %x64 %x80 %x89 %x45 %xC2 %x0E %xD8 %x1A %x0A %x2B %x36 %x03 %x37 %x92
+%xA4 %xA9 %xD0 %x3C %x39 %x1C %xB5 %x41 %xC2 %x59 %x7F %x06 %x70 %x39 %x2B %x0A
+%x31 %x04 %x54 %x7E %x60 %xF1 %x59 %x40 %x3F %x61 %xEC %x1C %x21 %x9D %xBA %xA3
+%xB0 %xB3 %xF8 %xBA %xD6 %xF1 %x90 %x17 %x21 %x3B %x75 %xB3 %x42 %x9F %xBB %x3B
+%xD4 %xBF %xAB %xB7 %x80 %xBA %x8E %x1E %xAE %x93 %x62 %x5D %xB0 %x21 %x50 %xF0
+%x29 %x80 %xB3 %xDF %x6A %xFC %xFF %x14 %x46 %x06 %xEE %x3B %x29 %xE1 %xD6 %x2F
+
+%xC00C
+# RRSIG IN
+46[2] 1[2]
+3600[4]
+159[2]
+# NSEC RSASHA256 2
+47[2] 8 2
+3600[4] 1538762924[4] 1536942010[4]
+%xA450
+ 7 "example"
+ 3 "org"
+ 0
+%x67 %x5E %xF9 %x04 %x50 %x13 %xEA %xB7 %x18 %xE1 %x0E %x3B %x9F %xB9 %x9B %x7A
+%x10 %x85 %x2A %x92 %x65 %xC6 %x47 %x6D %xA9 %x3A %xCC %x89 %x81 %x3F %x28 %xEC
+%x94 %x32 %xDA %x3E %xEA %xD9 %x81 %xC5 %x9E %x68 %xE7 %xAC %xA1 %xCE %xDB %xF5
+%x14 %xBB %xD6 %x3B %x0A %xB1 %x59 %xF6 %x41 %x99 %xEA %x7D %x66 %x0C %xD5 %x5E
+%x3F %x95 %x5F %xAA %x3A %xDB %xAD %x81 %xB1 %xD0 %x4D %x11 %xD8 %x2B %xFF %x2B
+%xC1 %x71 %xF9 %x42 %x18 %x71 %xE4 %x6D %x44 %x8E %x63 %xE4 %x21 %x13 %x25 %xEE
+%xDD %x52 %x4F %xA0 %xEC %x1A %x68 %xE5 %x40 %x42 %x84 %x7F %xFD %xCB %x56 %x87
+%x52 %x9F %x19 %x2F %xE5 %x1E %x95 %xDB %x2D %x55 %x40 %x66 %x32 %x25 %x7F %x29
+
+%xC00C
+# RRSIG IN
+46[2] 1[2]
+3600[4]
+287[2]
+# DNSKEY RSASHA256 2
+48[2] 8 2
+3600[4] 1538735910[4] 1536891610[4]
+%x0D45
+ 7 "example"
+ 3 "org"
+ 0
+%x4D %xB8 %xCC %xCF %xF9 %x95 %x47 %xDE %xFF %xD4 %x39 %x13 %xE3 %xD6 %x78 %x2C
+%x44 %x46 %xD1 %x31 %x1F %x78 %x96 %xBE %xB7 %xDE %x91 %xC4 %xD0 %x3F %x35 %x0B
+%xA9 %xBA %x61 %x14 %xE4 %x2B %x19 %xF6 %xEA %x43 %xED %xBA %x16 %x40 %xE1 %x8D
+%xA9 %xC6 %xDE %xB0 %xD4 %x0C %x9A %x7B %xD5 %x40 %x76 %x72 %x05 %x29 %x3B %xF4
+%x5A %xD0 %x91 %x47 %x3F %xC1 %x57 %xB9 %x6C %x68 %xF2 %x5C %x0D %x42 %xE7 %xCB
+%xFE %x70 %x04 %x5B %xBB %xE7 %xB1 %x4F %x43 %x80 %x75 %xA3 %xDF %x3F %xBD %x26
+%x7D %x97 %x99 %x07 %xF9 %xC4 %xAA %x2D %x52 %xC3 %x39 %x72 %xB7 %x4E %xA9 %x4F
+%x6B %xE2 %x47 %x9E %x0D %x8F %x42 %xFE %x62 %xD0 %x1B %xCC %x76 %x6A %x9D %x80
+%x3F %x55 %x1D %x99 %x4B %x66 %xC3 %xE9 %x89 %x1E %xEE %xC7 %xFF %x11 %x54 %xD8
+%x4D %x02 %x08 %xFE %x03 %x5E %x02 %x45 %x91 %x7B %xED %xE9 %x14 %x68 %x78 %xE1
+%x88 %x66 %x52 %xE9 %xC5 %x51 %xA7 %x64 %x61 %x37 %x8C %xA7 %x85 %x14 %x2A %x43
+%xDE %x6E %x00 %x7C %x1D %xA0 %x22 %xA9 %xA5 %x91 %xE5 %x4B %x56 %x0C %x90 %xFA
+%x64 %xE1 %x29 %x96 %xE6 %x70 %x83 %xB6 %xCA %x65 %x84 %x29 %x4E %x4F %xAD %xF7
+%xB9 %x46 %xD3 %x59 %xA1 %x1B %x73 %x8F %x82 %x36 %x6F %xE1 %xED %xD6 %x64 %x6D
+%xF1 %xAB %x30 %xD6 %x89 %x6A %xDD %x4F %xAF %x8D %xF2 %x26 %x98 %x60 %x1A %xF3
+%x9E %xE0 %xF9 %xC3 %x7A %x2F %xB2 %x86 %x3F %xE0 %xFE %xC7 %x55 %xA9 %x85 %x54
+
+%xC00C
+# RRSIG IN
+46[2] 1[2]
+3600[4]
+287[2]
+# DNSKEY RSASHA256 2
+48[2] 8 2
+3600[4] 1538735910[4] 1536891610[4]
+%x1D96
+ 7 "example"
+ 3 "org"
+ 0
+%x9D %xE7 %x43 %x09 %x71 %xED %x11 %x26 %x0D %xA9 %x8D %xE1 %x84 %xDB %xBB %xC7
+%x4B %x1D %x8A %xCD %x0F %x25 %x2D %xCD %x4F %x4B %x9C %x53 %xB9 %x97 %xAA %x06
+%xE4 %xBF %xCA %x78 %x1C %x86 %xE2 %x7E %x23 %xCC %xAD %x1A %x6C %xC0 %x15 %x70
+%x37 %x3E %xA4 %xC9 %x01 %x3C %xF0 %x54 %x8E %x2F %xD5 %xF2 %x94 %x03 %x5A %x7D
+%x3C %xA6 %x09 %x9D %x39 %xC3 %xF6 %x9D %x9D %xDF %x25 %xB4 %x96 %x83 %x0C %x25
+%x60 %xA4 %x40 %x32 %x1B %x4D %x39 %x96 %xD6 %x03 %xCB %x62 %xBE %xB6 %x18 %xB9
+%x0F %x71 %x5A %x14 %xA8 %x44 %xA4 %x9E %x99 %x9D %xEB %x86 %xCA %xFD %xCE %xD0
+%xB2 %x34 %xD5 %x98 %x0F %xC7 %xC1 %xDC %x27 %x07 %xB7 %x62 %x80 %xCF %xFF %xAB
+%x1C %xA7 %xE4 %x62 %x86 %x1C %x6A %xC2 %x9D %xC3 %x3C %x52 %xD1 %x5F %x09 %xE8
+%x08 %xBB %x51 %x75 %x8E %xF3 %xF1 %x9D %xB1 %x20 %xED %xA0 %xB0 %xF0 %x4B %xCF
+%x58 %xF6 %x68 %x6E %x21 %x73 %x26 %xC0 %x41 %x04 %x39 %x83 %x92 %x46 %x9C %xA4
+%xB0 %x82 %x3C %x5F %x0F %x7C %x9B %x69 %x38 %x16 %x10 %xE0 %xB1 %xFA %xAD %x04
+%xE8 %xAF %x2F %x75 %x3F %x10 %x5C %x5C %xB9 %x1C %xAD %x85 %x5B %xF8 %xB2 %xEF
+%xEC %x80 %xA6 %x90 %x84 %x27 %x24 %xB5 %x51 %xD6 %x7E %xBE %x8C %x1B %xFD %x4A
+%x91 %xD8 %x71 %xFA %x69 %x45 %x0E %xF9 %x13 %xE8 %xCA %xF4 %x39 %xA7 %x9E %x9F
+%x55 %x83 %xE2 %x19 %xDF %x67 %x99 %x60 %xBD %x29 %x5D %x1B %x3F %x61 %xB4 %x37
+
+%xC00C
+# NSEC IN
+47[2] 1[2]
+3600[4]
+26[2]
+ 3 "www"
+ 7 "example"
+ 3 "org"
+ 0
+ 0 7 %b01100010 %b00000000 %b10000000 %b00001000 %b00000000 %b00000011 %b10000000
+
+%xC00C
+# TXT IN
+16[2] 1[2]
+86400[4]
+12[2]
+11 "v=spf1" %x20 "-all"
+
+%xC00C
+# NS IN
+2[2] 1[2]
+86400[4]
+20[2]
+ 1 "a"
+12 "iana-servers"
+ 3 "net"
+ 0
+
+%xC00C
+# NS IN
+2[2] 1[2]
+86400[4]
+4[2]
+ 1 "b"
+%xC6F7
+
+%xC00C
+# AAAA IN
+28[2] 1[2]
+86400[4]
+16[2]
+%x2606 %x2800 %x0220 %x0001 %x0248 %x1893 %x25C8 %x1946
+
+%xC00C
+# A IN
+1[2] 1[2]
+86400[4]
+4[2]
+93 184 216 34
+
+%xC00C
+# DNSKEY IN
+48[2] 1[2]
+3600[4]
+136[2]
+# <flags> 3 RSASHA256
+%b0000000100000000 3 8
+%x03 %x01 %x00 %x01 %x98 %x79 %xC3 %xE9 %xED %x84 %x85 %x1B %x9F %x65 %xBD %x0C
+%x9C %x53 %x70 %xEF %x94 %x0B %x6F %x8E %x2C %xCC %x9F %x12 %x54 %xE6 %x9D %x23
+%x01 %xE2 %x94 %xC4 %x17 %xE6 %x0D %x5A %x7C %x3A %x33 %xBA %x5B %x7D %x7E %x3C
+%xA5 %xAC %xC6 %x2E %x19 %x65 %xC1 %x87 %x08 %x9B %x9F %x2D %x7A %xEC %xC1 %x0C
+%x19 %xEB %xF7 %xD0 %x0D %x3C %x56 %x53 %x6C %xA6 %x6F %xD7 %xB3 %x53 %x1C %x4D
+%x33 %xC7 %xF0 %x5D %xFB %x41 %xE8 %x25 %x4E %xEB %x0F %x7E %x7D %x7F %x86 %x36
+%x6C %xC4 %x47 %x36 %xE0 %x43 %x28 %x9E %xF9 %x3E %x47 %x01 %x3E %xBF %xFE %xE6
+%x62 %xB7 %x7A %xD1 %xCF %x35 %x88 %x3B %x7E %xFA %x24 %x1E %xDD %x7D %x26 %xC0
+%x15 %x9B %x7B %x25
+
+%xC00C
+# DNSKEY IN
+48[2] 1[2]
+3600[4]
+136[2]
+# <flags> 3 RSASHA256
+%b0000000100000000 3 8
+%x03 %x01 %x00 %x01 %xC2 %xFC %x3D %x81 %xA9 %x77 %x21 %xEF %xE1 %x2B %x97 %xF4
+%xB0 %x5C %x07 %x53 %x90 %xED %x79 %x16 %x6B %x63 %x08 %x38 %x4B %xC0 %xE3 %x45
+%x5B %x66 %x6E %x8B %xA2 %x84 %x58 %x75 %x1F %x0A %x98 %xF7 %x39 %xB1 %x71 %x83
+%x1E %xCD %x9D %xA0 %x3E %x8F %x38 %x6C %xA8 %x96 %xBE %x88 %xCC %x8A %x03 %x2A
+%x3F %xD4 %x30 %x2D %xE1 %x76 %xBA %x26 %xF9 %x52 %x9E %x4D %xF6 %xB3 %x0E %x4D
+%xC4 %x82 %x03 %xCA %xAD %x00 %x44 %x4C %x95 %x3C %x71 %xE1 %x5D %x47 %xF9 %xE4
+%xB0 %x3F %x94 %x7D %x4D %x83 %x7A %x23 %xFA %x1B %x1A %x69 %x21 %x5D %xC0 %xF4
+%xEE %x64 %xBB %x9F %x15 %x98 %xA9 %x76 %xAB %xDB %xA0 %x4D %x42 %xE8 %xAC %xD1
+%x44 %x61 %x6C %x9B
+
+%xC00C
+# DNSKEY IN
+48[2] 1[2]
+3600[4]
+264[2]
+# <flags> 3 RSASHA256
+%b0000000100000001 3 8
+%x03 %x01 %x00 %x01 %x9B %x56 %x99 %xB0 %x76 %x37 %x24 %x43 %xF2 %x85 %xFB %x25
+%xE3 %x54 %x7E %x62 %x41 %xF7 %x6F %x0B %x04 %x44 %x7A %x97 %x8E %x13 %xA2 %x4A
+%xA1 %x64 %x33 %x8B %xDA %x0E %x88 %xCB %x12 %xEF %xF4 %xAB %xB4 %xD9 %x7F %xC2
+%xE7 %x48 %xB2 %x51 %xE2 %xB5 %xAF %x89 %x6B %xF6 %xCF %x56 %x75 %x24 %x80 %x1F
+%xE4 %x22 %xDE %x8C %xDE %x5E %xF8 %x59 %xBF %x30 %x1C %x81 %x0C %xCD %x27 %x58
+%xD4 %x8F %x84 %xD7 %xB9 %xF5 %xE4 %x9A %x5E %x10 %x23 %x2F %x64 %xC0 %xBD %x7C
+%x37 %x78 %xD1 %x8B %x3B %x3E %x4A %x3F %x20 %xCF %x9E %x94 %x43 %x03 %xCB %xD4
+%x9D %xCC %xDE %xB8 %x58 %xBD %x2A %xC5 %xD1 %xAD %xB3 %x41 %x8B %x7C %x56 %xDD
+%x3E %x1C %x65 %x0D %x26 %x76 %x89 %xED %xD4 %xC1 %x6D %xF0 %x0B %x89 %x42 %x5C
+%xD0 %x04 %xEE %x1C %xA3 %x94 %xD4 %xB7 %xBE %x3D %xBD %x1B %xFF %x74 %x3A %x6F
+%x80 %x06 %xDD %x93 %x4A %x72 %x2C %x32 %xF0 %x76 %xFD %xC2 %xBA %x1E %x03 %x0B
+%xF9 %xFF %xFB %x5F %x7D %x38 %x13 %x43 %x2E %x03 %xE3 %x9E %x38 %x1D %x90 %x94
+%x91 %x15 %xBC %x6F %xFF %xA3 %x34 %x2A %x73 %x77 %x0E %xB1 %xEE %x0E %x1E %x74
+%x0F %x77 %xF3 %x2F %x9F %xE1 %x89 %xCE %x9F %xED %x1B %x23 %x9A %x52 %xA4 %x1E
+%x08 %x0C %x6F %x86 %x2A %x0A %xC5 %x3B %x68 %x00 %x11 %xDB %x6D %xBA %x3C %xA5
+%xC4 %x9C %x6C %x9B %xEB %x25 %xC7 %x44 %x27 %xF1 %x6A %xEF %x47 %xF6 %x59 %xBD
+%xC6 %x27 %x5E %xFB
+
+%xC00C
+# DNSKEY IN
+48[2] 1[2]
+3600[4]
+264[2]
+# <flags> 3 RSASHA256
+%b0000000100000001 3 8
+%x03 %x01 %x00 %x01 %xAC %x88 %x63 %x0A %x7A %x8B %x15 %x9F %x85 %x83 %x38 %x4C
+%x7A %xD6 %xB5 %x53 %x95 %x2D %xBB %x49 %x2D %xE9 %x1E %x5E %x83 %x40 %x35 %xFA
+%xE8 %x18 %x0F %xFD %x47 %x9C %xA7 %x3E %x19 %x91 %x57 %x93 %x2E %x7C %x28 %x25
+%xB8 %xF0 %x97 %xB3 %x4C %x5C %x58 %xA3 %x31 %xBA %x78 %x20 %x2D %xF4 %x26 %xF3
+%xB2 %xFF %x2A %x42 %xFE %xF5 %x6E %x94 %xC7 %x96 %x82 %x58 %x80 %x25 %x54 %x86
+%xC3 %xF9 %x58 %xA8 %x55 %x7B %x87 %x6E %x66 %x96 %xD1 %x25 %x17 %x02 %x98 %xB5
+%xC0 %x86 %xAA %xF7 %x23 %xFD %x3F %x4A %x15 %x7D %xB2 %x92 %xAA %x54 %x0B %x40
+%xF6 %xEF %xAC %xE4 %xC6 %x5C %x07 %x91 %xF9 %x70 %x00 %x46 %x48 %x2B %x3C %x94
+%x1A %x75 %x30 %xF0 %xDF %x30 %x3B %x62 %xE8 %x33 %xA0 %x7F %xE3 %x24 %x49 %xA3
+%x2B %x70 %x06 %x55 %x15 %x1B %xD7 %x76 %x41 %xC9 %x4B %x1F %xF9 %xA0 %x27 %x54
+%x99 %x80 %xB4 %x17 %x65 %xDF %xBE %xF6 %x98 %xDD %xAB %x2E %x86 %x82 %x09 %xAE
+%xB0 %xC8 %x2A %xD3 %xD1 %x86 %x5C %x1E %xBC %x62 %x30 %x6A %x3C %x27 %xF2 %xA3
+%x53 %xFD %x48 %x89 %xD7 %xEE %x7E %xC3 %x87 %x1F %x58 %x90 %xDC %x22 %xE8 %x57
+%x42 %x9F %x85 %x00 %xC1 %x6F %x7D %xD2 %xF1 %x31 %xF7 %xD1 %xCB %xBC %x58 %x23
+%xE6 %x2A %x12 %x4D %x5A %x36 %xE1 %x2D %xA4 %xCA %x4C %x35 %x74 %x18 %xA9 %x7F
+%x18 %x86 %x17 %xDC %x82 %x9C %x34 %xB6 %x3D %x4D %x98 %xE4 %xC1 %x49 %xCE %x70
+%x47 %x35 %x33 %x11
+
+ 0
+# OPT
+41[2]
+4096[2]
+0 0 %b1000000000000000
+0[2]
