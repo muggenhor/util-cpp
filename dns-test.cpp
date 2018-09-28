@@ -25,22 +25,27 @@ void process_pkts(InputIterator first, const EndIterator last)
   while (first != last)
   {
     using std::cout;
+    frame.clear();
 
     const auto length = [&] {
       auto [len, iter] = read_u16(std::move(first), last);
       first = std::move(iter);
       return len;
     }();
-    if (length)
+    if (!length)
+    {
+      cout << "\x1B[31m" "couldn't read length: too little data" "\x1B[39m\n";
+      break;
+    }
+    else
     {
       cout << "frame len: " << *length << '\n';
-      frame.clear();
       for (unsigned i = 0; length && i < *length; ++i)
       {
         if (first == last)
         {
           cout << "\x1B[31m" "less octets available than specified frame length" "\x1B[39m: " << frame.size() << '\n';
-          break;
+          return;
         }
         frame.push_back(*first++);
       }
