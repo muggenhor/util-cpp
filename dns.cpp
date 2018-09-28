@@ -239,6 +239,7 @@ namespace dns
           , gsl::span<const std::uint8_t> name_frame
         )
     {
+      const auto max_follow_count = std::min(static_cast<unsigned>(frame.size() / 4), 255U);
       unsigned pointer_labels_followed = 0;
       std::vector<std::string_view> labels;
       //const auto label = std::regex("^[A-Za-z](?:[-A-Za-z0-9]{0,61}[A-Za-z0-9])?$");
@@ -267,7 +268,7 @@ namespace dns
             if (pos.empty())
               return std::nullopt;
             // prevent infinite loops
-            if (pointer_labels_followed++ > frame.size() / 4)
+            if (++pointer_labels_followed > max_follow_count)
               return std::nullopt;
 
             const auto offset = (static_cast<std::uint16_t>(label_size & 0x3fU) << 8U)
