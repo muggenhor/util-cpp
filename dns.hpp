@@ -400,7 +400,7 @@ namespace dns
   {
     digest_algorithm              hash_algo;
     bool                          opt_out;
-    std::uint8_t                  iterations;
+    std::uint16_t                 iterations;
     gsl::span<const std::uint8_t> salt;
     gsl::span<const std::uint8_t> next_hashed_name;
     std::set<rr_type>             types;
