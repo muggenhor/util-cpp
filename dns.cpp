@@ -233,10 +233,41 @@ namespace dns
 
   namespace
   {
+    enum class label_type_mask
+    {
+      // RFC 1035
+      normal                                            = 0b0001,
+      compression_pointer                               = 0b0010,
+      // RFC 2673
+      extended [[deprecated("Obsoleted by RFC 6891")]]  = 0b0100,
+      unallocated                                       = 0b1000,
+    };
+    constexpr int operator|(label_type_mask lhs, int rhs) noexcept
+    {
+      return static_cast<int>(lhs) | rhs;
+    }
+    constexpr int operator|(label_type_mask lhs, label_type_mask rhs) noexcept
+    {
+      return lhs | static_cast<int>(rhs);
+    }
+    constexpr int operator|(int lhs, label_type_mask rhs) noexcept
+    {
+      return rhs | lhs;
+    }
+    constexpr int operator&(label_type_mask lhs, int rhs) noexcept
+    {
+      return static_cast<int>(lhs) | rhs;
+    }
+    constexpr int operator&(int lhs, label_type_mask rhs) noexcept
+    {
+      return rhs | lhs;
+    }
+
     std::optional<std::pair<std::vector<std::string_view>, gsl::span<const std::uint8_t> /* unused remainder of name_frame */>>
       parse_domain_name(
             const gsl::span<const std::uint8_t> frame
           , gsl::span<const std::uint8_t> name_frame
+          , int labels_to_accept = label_type_mask::normal | label_type_mask::compression_pointer
         )
     {
       const auto max_follow_count = std::min(static_cast<unsigned>(frame.size() / 4), 255U);
@@ -253,17 +284,30 @@ namespace dns
         const auto label_size = pos[0];
         pos = pos.subspan(1);
         const auto label_type = [&] {
-            if (const auto type = static_cast<std::uint8_t>(label_size & 0b1100'0000);
-                type == 0b0100'0000)
-              return label_size;
-            else
-              return type;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+            switch (static_cast<std::uint8_t>(label_size & 0b1100'0000))
+            {
+              case 0b1100'0000:
+                return label_type_mask::compression_pointer;
+              case 0b0000'0000:
+                return label_type_mask::normal;
+              case 0b0100'0000:
+                return label_type_mask::extended;
+              case 0b1000'0000:
+              default: // shut-up GCC which fails to detect that these bit values cover all possibilities
+                return label_type_mask::unallocated;
+            }
+#pragma GCC diagnostic pop
           }();
+
+        if (!(label_type & labels_to_accept))
+          return std::nullopt;
 
         switch (label_type)
         {
           // Handle name pointers, which terminate a sequence of labels
-          case 0b1100'0000:
+          case label_type_mask::compression_pointer:
           {
             if (pos.empty())
               return std::nullopt;
@@ -285,7 +329,7 @@ namespace dns
             pos = frame.subspan(offset);
             break;
           }
-          case 0b0000'0000:
+          case label_type_mask::normal:
           {
             if (pos.size() < label_size)
               return std::nullopt;
@@ -585,21 +629,14 @@ end_loop:
             | static_cast<std::uint16_t>(rdata_frame[17] & 0xffU) <<  0U
             );
         rdata_frame = rdata_frame.subspan(18);
-        // using this, instead of parse_domain_name, because it supports domain compression and that's not permitted for RRSIG
-        for (;;)
+        if (auto name = parse_domain_name(frame, rdata_frame, 0|label_type_mask::normal); name)
         {
-          if (rdata_frame.size() < 1)
-            return std::nullopt;
-          const auto string_size = rdata_frame[0];
-          if (string_size & 0xc0)
-            return std::nullopt;
-          rdata_frame = rdata_frame.subspan(1);
-          if (string_size <= 0)
-            break;
-          if (rdata_frame.size() < string_size)
-            return std::nullopt;
-          rrsig.signer_name.emplace_back(reinterpret_cast<const char*>(rdata_frame.data()), string_size);
-          rdata_frame = rdata_frame.subspan(string_size);
+          rrsig.signer_name = std::move(name->first);
+          rdata_frame = name->second;
+        }
+        else
+        {
+          return std::nullopt;
         }
         rrsig.signature = rdata_frame;
         rdata = std::move(rrsig);
@@ -607,23 +644,14 @@ end_loop:
       else if (type == rr_type::NSEC)
       {
         nsec_rdata nsec;
-        // using this, instead of parse_domain_name, because it supports domain compression and that's not permitted for NSEC
-        for (;;)
+        if (auto name = parse_domain_name(frame, rdata_frame, 0|label_type_mask::normal); name)
         {
-          if (rdata_frame.size() < 1)
-            return std::nullopt;
-          const auto string_size = rdata_frame[0];
-          if (string_size & 0xc0)
-            return std::nullopt;
-          rdata_frame = rdata_frame.subspan(1);
-          if (string_size <= 0)
-            break;
-          if (rdata_frame.size() < string_size)
-            return std::nullopt;
-          nsec.next_domain_name.emplace_back(reinterpret_cast<const char*>(rdata_frame.data()), string_size);
-          rdata_frame = rdata_frame.subspan(string_size);
-          if (rdata_frame.empty())
-            break;
+          nsec.next_domain_name = std::move(name->first);
+          rdata_frame = name->second;
+        }
+        else
+        {
+          return std::nullopt;
         }
         for (; !rdata_frame.empty();)
         {
@@ -656,7 +684,6 @@ end_loop:
       else if (type == rr_type::NSEC3)
       {
         nsec3_rdata nsec;
-        // using this, instead of parse_domain_name, because it supports domain compression and that's not permitted for NSEC
         if (rdata_frame.size() < 5)
           return std::nullopt;
         nsec.hash_algo = static_cast<digest_algorithm>(rdata_frame[0]);
