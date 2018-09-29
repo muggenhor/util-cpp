@@ -283,6 +283,8 @@ namespace dns
 
         const auto label_size = pos[0];
         pos = pos.subspan(1);
+        if (label_size <= 0)
+          break;
         const auto label_type = [&] {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -333,8 +335,6 @@ namespace dns
           {
             if (pos.size() < label_size)
               return std::nullopt;
-            if (label_size <= 0)
-              goto end_loop;
 
             labels.emplace_back(reinterpret_cast<const char*>(pos.data()), label_size);
             pos = pos.subspan(label_size);
@@ -344,7 +344,6 @@ namespace dns
             return std::nullopt;
         }
       }
-end_loop:
       if (!name_is_compressed)
         name_frame = pos;
 
