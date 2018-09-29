@@ -349,6 +349,45 @@ namespace dns
 
       return std::make_pair(std::move(labels), name_frame);
     }
+
+    /// Parses according to RFC 4034 section 4.1.2: The Type Bit Maps Field
+    /// \post on success all of input will have been consumed
+    std::optional<std::set<rr_type>>
+      parse_type_bit_map(gsl::span<const std::uint8_t> input) noexcept
+    {
+      std::optional<std::set<rr_type>> types(std::in_place);
+      do
+      {
+        if (input.size() < 2)
+        {
+          types = std::nullopt;
+          break;
+        }
+        const auto window = static_cast<std::uint16_t>(input[0] << 8U);
+        const auto bitmap_length = input[1];
+        if (bitmap_length < 1 || bitmap_length > 32
+         || input.size() < 2 + bitmap_length)
+        {
+          types = std::nullopt;
+          break;
+        }
+        const auto bitmap = input.subspan(2, bitmap_length);
+        input = input.subspan(2 + bitmap_length);
+        unsigned idx = 0U;
+        for (const unsigned octet : bitmap)
+        {
+          const unsigned offset = idx++;
+          for (unsigned bit = 0; bit < 8; ++bit)
+          {
+            if (octet & (1U << (7 - bit)))
+            {
+              types->emplace(static_cast<rr_type>(window | (offset * 8U + bit)));
+            }
+          }
+        }
+      } while (types && !input.empty());
+      return types;
+    }
   }
 
   std::optional<message> parse(const gsl::span<const std::uint8_t> frame)
@@ -640,43 +679,11 @@ namespace dns
       }
       else if (type == rr_type::NSEC)
       {
-        nsec_rdata nsec;
-        if (auto name = parse_domain_name(frame, rdata_frame, 0|label_type_mask::normal); name)
-        {
-          nsec.next_domain_name = std::move(name->first);
-          rdata_frame = name->second;
-        }
-        else
-        {
+        auto next_domain_name  = parse_domain_name(frame, rdata_frame, 0|label_type_mask::normal);
+        auto types             = next_domain_name ? parse_type_bit_map(next_domain_name->second) : std::optional<std::set<rr_type>>(std::nullopt);
+        if (!next_domain_name || !types)
           return std::nullopt;
-        }
-        while (!rdata_frame.empty())
-        {
-          if (rdata_frame.size() < 2)
-            return std::nullopt;
-          // RFC 4034 section 4.1.2: The Type Bit Maps Field
-          const auto window = static_cast<std::uint16_t>(rdata_frame[0] << 8U);
-          const auto bitmap_length = rdata_frame[1];
-          if (bitmap_length < 1 || bitmap_length > 32)
-            return std::nullopt;
-          if (rdata_frame.size() < 2 + bitmap_length)
-            return std::nullopt;
-          const auto bitmap = rdata_frame.subspan(2, bitmap_length);
-          rdata_frame = rdata_frame.subspan(2 + bitmap_length);
-          unsigned idx = 0U;
-          for (const unsigned octet : bitmap)
-          {
-            const unsigned offset = idx++;
-            for (const unsigned bit : { 0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, })
-            {
-              if (octet & (1U << (7 - bit)))
-              {
-                nsec.types.emplace(static_cast<rr_type>(window | (offset * 8U + bit)));
-              }
-            }
-          }
-        }
-        rdata = std::move(nsec);
+        rdata = nsec_rdata{std::move(next_domain_name->first), std::move(*types)};
       }
       else if (type == rr_type::NSEC3)
       {
@@ -700,32 +707,11 @@ namespace dns
           return std::nullopt;
         nsec.next_hashed_name = rdata_frame.subspan(1, hash_length);
         rdata_frame = rdata_frame.subspan(1 + hash_length);
-        while (!rdata_frame.empty())
-        {
-          if (rdata_frame.size() < 2)
-            return std::nullopt;
-          // RFC 4034 section 4.1.2: The Type Bit Maps Field
-          const auto window = static_cast<std::uint16_t>(rdata_frame[0] << 8U);
-          const auto bitmap_length = rdata_frame[1];
-          if (bitmap_length < 1 || bitmap_length > 32)
-            return std::nullopt;
-          if (rdata_frame.size() < 2 + bitmap_length)
-            return std::nullopt;
-          const auto bitmap = rdata_frame.subspan(2, bitmap_length);
-          rdata_frame = rdata_frame.subspan(2 + bitmap_length);
-          unsigned idx = 0U;
-          for (const unsigned octet : bitmap)
-          {
-            const unsigned offset = idx++;
-            for (const unsigned bit : { 0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, })
-            {
-              if (octet & (1U << (7 - bit)))
-              {
-                nsec.types.emplace(static_cast<rr_type>(window | (offset * 8U + bit)));
-              }
-            }
-          }
-        }
+        if (auto types = parse_type_bit_map(rdata_frame);
+            types)
+          nsec.types = std::move(*types);
+        else
+          return std::nullopt;
         rdata = std::move(nsec);
       }
       else if (rdclass == rr_class::IN && type == rr_type::A)
