@@ -533,29 +533,29 @@ namespace dns
             | static_cast<std::uint32_t>(rdata_frame[ 2] & 0xffU) <<  8U
             | static_cast<std::uint32_t>(rdata_frame[ 3] & 0xffU) <<  0U
             );
-        const std::chrono::duration<std::int32_t> refresh(
-            static_cast<std::int32_t>(
+        const std::chrono::duration<std::uint32_t> refresh(
+            static_cast<std::uint32_t>(
               static_cast<std::uint32_t>(rdata_frame[ 4] & 0xffU) << 24U
             | static_cast<std::uint32_t>(rdata_frame[ 5] & 0xffU) << 16U
             | static_cast<std::uint32_t>(rdata_frame[ 6] & 0xffU) <<  8U
             | static_cast<std::uint32_t>(rdata_frame[ 7] & 0xffU) <<  0U
           ));
-        const std::chrono::duration<std::int32_t> retry(
-            static_cast<std::int32_t>(
+        const std::chrono::duration<std::uint32_t> retry(
+            static_cast<std::uint32_t>(
               static_cast<std::uint32_t>(rdata_frame[ 8] & 0xffU) << 24U
             | static_cast<std::uint32_t>(rdata_frame[ 9] & 0xffU) << 16U
             | static_cast<std::uint32_t>(rdata_frame[10] & 0xffU) <<  8U
             | static_cast<std::uint32_t>(rdata_frame[11] & 0xffU) <<  0U
           ));
-        const std::chrono::duration<std::int32_t> expiry(
-            static_cast<std::int32_t>(
+        const std::chrono::duration<std::uint32_t> expiry(
+            static_cast<std::uint32_t>(
               static_cast<std::uint32_t>(rdata_frame[12] & 0xffU) << 24U
             | static_cast<std::uint32_t>(rdata_frame[13] & 0xffU) << 16U
             | static_cast<std::uint32_t>(rdata_frame[14] & 0xffU) <<  8U
             | static_cast<std::uint32_t>(rdata_frame[15] & 0xffU) <<  0U
           ));
-        const std::chrono::duration<std::int32_t> negative_ttl(
-            static_cast<std::int32_t>(
+        const std::chrono::duration<std::uint32_t> negative_ttl(
+            static_cast<std::uint32_t>(
               static_cast<std::uint32_t>(rdata_frame[16] & 0xffU) << 24U
             | static_cast<std::uint32_t>(rdata_frame[17] & 0xffU) << 16U
             | static_cast<std::uint32_t>(rdata_frame[18] & 0xffU) <<  8U
@@ -640,21 +640,21 @@ namespace dns
         rrsig.algorithm = static_cast<security_algorithm>(rdata_frame[2]);
         rrsig.labels    = rdata_frame[3];
         rrsig.original_ttl = std::chrono::duration<std::uint32_t>(
-            static_cast<std::int32_t>(
+            static_cast<std::uint32_t>(
               static_cast<std::uint32_t>(rdata_frame[ 4] & 0xffU) << 24U
             | static_cast<std::uint32_t>(rdata_frame[ 5] & 0xffU) << 16U
             | static_cast<std::uint32_t>(rdata_frame[ 6] & 0xffU) <<  8U
             | static_cast<std::uint32_t>(rdata_frame[ 7] & 0xffU) <<  0U
           ));
         rrsig.expiration = std::chrono::duration<std::uint32_t>(
-            static_cast<std::int32_t>(
+            static_cast<std::uint32_t>(
               static_cast<std::uint32_t>(rdata_frame[ 8] & 0xffU) << 24U
             | static_cast<std::uint32_t>(rdata_frame[ 9] & 0xffU) << 16U
             | static_cast<std::uint32_t>(rdata_frame[10] & 0xffU) <<  8U
             | static_cast<std::uint32_t>(rdata_frame[11] & 0xffU) <<  0U
           ));
         rrsig.inception = std::chrono::duration<std::uint32_t>(
-            static_cast<std::int32_t>(
+            static_cast<std::uint32_t>(
               static_cast<std::uint32_t>(rdata_frame[12] & 0xffU) << 24U
             | static_cast<std::uint32_t>(rdata_frame[13] & 0xffU) << 16U
             | static_cast<std::uint32_t>(rdata_frame[14] & 0xffU) <<  8U

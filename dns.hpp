@@ -346,13 +346,13 @@ namespace dns
 
   struct soa_rdata
   {
-    name                                authoritative_name_server;
-    name                                hostmaster;
-    std::uint32_t                       serial;
-    std::chrono::duration<std::int32_t> refresh;
-    std::chrono::duration<std::int32_t> retry;
-    std::chrono::duration<std::int32_t> expiry;
-    std::chrono::duration<std::int32_t> ttl;
+    name                                 authoritative_name_server;
+    name                                 hostmaster;
+    std::uint32_t                        serial;
+    std::chrono::duration<std::uint32_t> refresh;
+    std::chrono::duration<std::uint32_t> retry;
+    std::chrono::duration<std::uint32_t> expiry;
+    std::chrono::duration<std::uint32_t> ttl;
   };
 
   struct txt_rdata
