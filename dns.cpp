@@ -268,7 +268,7 @@ namespace dns
             const gsl::span<const std::uint8_t> frame
           , gsl::span<const std::uint8_t> name_frame
           , int labels_to_accept = label_type_mask::normal | label_type_mask::compression_pointer
-        )
+        ) noexcept
     {
       const auto max_follow_count = std::min(static_cast<unsigned>(frame.size() / 4), 255U);
       unsigned pointer_labels_followed = 0;
@@ -352,7 +352,7 @@ end_loop:
     }
   }
 
-  std::optional<message> parse(gsl::span<const std::uint8_t> frame)
+  std::optional<message> parse(const gsl::span<const std::uint8_t> frame)
   {
     static_assert(sizeof(frame[0]) * CHAR_BIT == 8, "This code is written under the assumption of a 8-bit byte");
 
@@ -528,7 +528,7 @@ end_loop:
       else if (type == rr_type::TXT)
       {
         txt_rdata txt;
-        for (;;)
+        do
         {
           if (rdata_frame.size() < 1)
             return std::nullopt;
@@ -538,9 +538,7 @@ end_loop:
             return std::nullopt;
           txt.strings.emplace_back(reinterpret_cast<const char*>(rdata_frame.data()), string_size);
           rdata_frame = rdata_frame.subspan(string_size);
-          if (rdata_frame.empty())
-            break;
-        }
+        } while (!rdata_frame.empty());
         rdata = std::move(txt);
       }
       else if (type == rr_type::DS
@@ -653,7 +651,7 @@ end_loop:
         {
           return std::nullopt;
         }
-        for (; !rdata_frame.empty();)
+        while (!rdata_frame.empty())
         {
           if (rdata_frame.size() < 2)
             return std::nullopt;
@@ -703,7 +701,7 @@ end_loop:
           return std::nullopt;
         nsec.next_hashed_name = rdata_frame.subspan(1, hash_length);
         rdata_frame = rdata_frame.subspan(1 + hash_length);
-        for (; !rdata_frame.empty();)
+        while (!rdata_frame.empty())
         {
           if (rdata_frame.size() < 2)
             return std::nullopt;
