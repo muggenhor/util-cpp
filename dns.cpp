@@ -340,34 +340,31 @@ end_loop:
     const std::uint16_t authority_count  = static_cast<std::uint16_t>(frame[ 8]) << 8U | frame[ 9];
     const std::uint16_t additional_count = static_cast<std::uint16_t>(frame[10]) << 8U | frame[11];
 
-    std::uint16_t cur = 12;
+    auto cur = frame.subspan(12);
     std::vector<question> questions;
     questions.reserve(question_count);
     for (std::uint16_t i = 0; i < question_count; ++i)
     {
-      if (cur >= frame.size())
-        return std::nullopt;
-
       std::vector<std::string_view> labels;
-      if (auto name = parse_domain_name(frame, frame.subspan(cur)); name)
+      if (auto name = parse_domain_name(frame, cur); name)
       {
         labels = std::move(name->first);
-        cur = name->second.data() - frame.data();
+        cur = name->second;
       }
       else
       {
         return std::nullopt;
       }
-      if (cur + 4 > frame.size())
+      if (cur.size() < 4)
         return std::nullopt;
 
       question question{
           std::move(labels)
-        , rr_type {static_cast<std::uint16_t>(static_cast<std::uint16_t>(frame[cur + 0]) << 8U | frame[cur + 1])}
-        , rr_class{static_cast<std::uint16_t>(static_cast<std::uint16_t>(frame[cur + 2]) << 8U | frame[cur + 3])}
+        , rr_type {static_cast<std::uint16_t>(static_cast<std::uint16_t>(cur[0]) << 8U | cur[1])}
+        , rr_class{static_cast<std::uint16_t>(static_cast<std::uint16_t>(cur[2]) << 8U | cur[3])}
       };
       questions.push_back(std::move(question));
-      cur += 4;
+      cur = cur.subspan<4>();
     }
 
     std::vector<rr> answers;
@@ -385,35 +382,32 @@ end_loop:
                   :                                      additionals
                   ;
 
-      if (cur >= frame.size())
-        return std::nullopt;
-
       std::vector<std::string_view> labels;
-      if (auto name = parse_domain_name(frame, frame.subspan(cur)); name)
+      if (auto name = parse_domain_name(frame, cur); name)
       {
         labels = std::move(name->first);
-        cur = name->second.data() - frame.data();
+        cur = name->second;
       }
       else
       {
         return std::nullopt;
       }
-      if (cur + 10 > frame.size())
+      if (cur.size() < 10)
         return std::nullopt;
 
-      const auto rdlength = static_cast<std::uint16_t>(frame[cur + 8]) << 8U | frame[cur + 9];
-      if (cur + 10 + rdlength > frame.size())
+      const auto rdlength = static_cast<std::uint16_t>(cur[8]) << 8U | cur[9];
+      if (cur.size() < 10 + rdlength)
         return std::nullopt;
 
-      const auto type    = static_cast<rr_type>(static_cast<std::uint16_t>(frame[cur + 0]) << 8U | frame[cur + 1]);
-      const auto rdclass = static_cast<rr_class>(static_cast<std::uint16_t>(frame[cur + 2]) << 8U | frame[cur + 3]);
+      const auto type    = static_cast<rr_type>(static_cast<std::uint16_t>(cur[0]) << 8U | cur[1]);
+      const auto rdclass = static_cast<rr_class>(static_cast<std::uint16_t>(cur[2]) << 8U | cur[3]);
       const std::chrono::duration<std::uint32_t> ttl{
-          static_cast<std::uint32_t>(frame[cur + 4] & 0xffU) << 24U
-        | static_cast<std::uint32_t>(frame[cur + 5] & 0xffU) << 16U
-        | static_cast<std::uint32_t>(frame[cur + 6] & 0xffU) <<  8U
-        | (frame[cur + 7] & 0xffU)};
+          static_cast<std::uint32_t>(cur[4] & 0xffU) << 24U
+        | static_cast<std::uint32_t>(cur[5] & 0xffU) << 16U
+        | static_cast<std::uint32_t>(cur[6] & 0xffU) <<  8U
+        | (cur[7] & 0xffU)};
 
-      auto rdata_frame = frame.subspan(cur + 10, rdlength);
+      auto rdata_frame = cur.subspan(10, rdlength);
       decltype(rr::rdata) rdata = rdata_frame;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -765,7 +759,7 @@ end_loop:
         };
         rrset.push_back(std::move(rr));
       }
-      cur += 10 + rdlength;
+      cur = cur.subspan(10 + rdlength);
     }
 
     if (is_response)
