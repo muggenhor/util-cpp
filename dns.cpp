@@ -18,7 +18,7 @@ namespace dns
         switch (static_cast<dns::errc>(i))
         {
           case errc::no_error:
-            break;
+            return "no error";;
           case errc::format_error:
             return "format error";
           case errc::server_failure:
@@ -435,11 +435,6 @@ namespace dns
     const bool authentic_data          = (flags >>  5U) & 0x1U;
     const bool checking_disabled       = (flags >>  4U) & 0x1U;
 
-    std::uint16_t udp_payload_size = 512U;
-    std::optional<std::uint8_t> edns_version;
-    bool dnssec_ok = false;
-    edns_options options;
-
     const std::uint16_t question_count   = static_cast<std::uint16_t>(frame[ 4]) << 8U | frame[ 5];
     const std::uint16_t answer_count     = static_cast<std::uint16_t>(frame[ 6]) << 8U | frame[ 7];
     const std::uint16_t authority_count  = static_cast<std::uint16_t>(frame[ 8]) << 8U | frame[ 9];
@@ -479,7 +474,6 @@ namespace dns
     std::vector<rr> additionals;
     additionals.reserve(additional_count);
 
-    bool seen_opt_rr = false;
     for (std::size_t i = 0; i < static_cast<std::uint16_t>(answer_count + authority_count + additional_count); ++i)
     {
       auto& rrset = i < answer_count                   ? answers
@@ -749,25 +743,19 @@ namespace dns
           return std::nullopt;
         rdata = aaaa_rdata{rdata_frame};
       }
-
-      if (type == rr_type::OPT)
+      else if (type == rr_type::OPT)
       {
-        if (seen_opt_rr)
-          return std::nullopt;
-        seen_opt_rr = true;
-        // RFC 6891, section 6.2.3: Values lower than 512 MUST be treated as equal to 512
-        udp_payload_size = static_cast<std::uint16_t>(rdclass);
-        rcode = static_cast<errc>(
-            ((ttl.count() >> 24U) & 0xffU)
-          | static_cast<std::uint32_t>(rcode));
-        edns_version = static_cast<std::uint8_t>((ttl.count() >> 16U) & 0xffU);
-        dnssec_ok = ttl.count() & 0x00008000U;
-
+        const auto udp_payload_size = static_cast<std::uint16_t>(rdclass);
+        const auto extended_rcode   = static_cast<errc>(((ttl.count() >> 20) & 0xff0) | (static_cast<std::uint16_t>(rcode) & 0x0f));
+        const auto edns_version     = static_cast<std::uint8_t>(ttl.count() >> 16);
+        const auto flags            = static_cast<std::uint16_t>(ttl.count());
+        const bool dnssec_ok        = flags & 0b1000'0000'0000'0000;
+        edns_options options;
         while (!rdata_frame.empty())
         {
           if (rdata_frame.size() < 4)
             return std::nullopt;
-          const auto code = static_cast<std::uint16_t>(
+          const auto code = static_cast<option_code>(
                 static_cast<std::uint16_t>(rdata_frame[0] & 0xffU) <<  8U
               | static_cast<std::uint16_t>(rdata_frame[1] & 0xffU) <<  0U
               );
@@ -777,27 +765,46 @@ namespace dns
               );
           if (rdata_frame.size() < 4 + length)
             return std::nullopt;
-          options.emplace(static_cast<option_code>(code), rdata_frame.subspan(4, length));
+          options.emplace(code, rdata_frame.subspan(4, length));
           rdata_frame = rdata_frame.subspan(4 + length);
         }
+	rdata = opt_rdata{
+              udp_payload_size
+            , extended_rcode
+            , edns_version
+            , flags
+            , dnssec_ok
+            , std::move(options)
+          };
       }
-      else
-      {
-        rr rr{
-            std::move(labels)
-          , type
-          , rdclass
-          , ttl
-          , std::move(rdata)
-        };
-        rrset.push_back(std::move(rr));
-      }
+
+      rr rr{
+          std::move(labels)
+        , type
+        , rdclass
+        , ttl
+        , std::move(rdata)
+      };
+      rrset.push_back(std::move(rr));
       cur = cur.subspan(10 + rdlength);
     }
 
+    std::optional<opt_rdata> edns;
+    for (const auto& rr : additionals)
+    {
+      if (const auto* const opt = std::get_if<opt_rdata>(&rr.rdata))
+      {
+        if (edns)
+          return std::nullopt;
+
+        edns = *opt;
+        rcode = edns->extended_rcode;
+      }
+    }
+
     if (is_response)
-      return reply{txid, rcode, is_authoritative_answer, is_truncated, is_recursion_available, authentic_data, checking_disabled, edns_version, udp_payload_size, dnssec_ok, std::move(questions), std::move(answers), std::move(authorities), std::move(additionals), std::move(options)};
+      return reply{txid, rcode, is_authoritative_answer, is_truncated, is_recursion_available, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals)};
     else
-      return query{txid, opcode, is_recursion_desired, authentic_data, checking_disabled, edns_version, udp_payload_size, dnssec_ok, std::move(questions), std::move(answers), std::move(authorities), std::move(additionals), std::move(options)};
+      return query{txid, opcode, is_recursion_desired, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals)};
   }
 }

@@ -72,13 +72,6 @@ void process_pkts(InputIterator first, const EndIterator last)
           if (msg.checking_disabled)
             cout << " cd";
           cout << '\n';
-          if (msg.edns_version)
-          {
-            cout << "  EDNS: version: " << static_cast<unsigned>(*msg.edns_version) << ", flags:";
-            if (msg.dnssec_ok)
-              cout << " do";
-            cout << "; udp: " << msg.udp_payload_size << '\n';
-          }
           cout << "  questions (" << msg.questions.size() << "):\n";
           for (const auto& q : msg.questions)
           {
@@ -90,7 +83,12 @@ void process_pkts(InputIterator first, const EndIterator last)
           const auto print_rr = [&] (const dns::rr& rr) {
               cout << "    ";
               print_name(rr.labels);
-              cout << ' ' << rr.ttl.count() << ' ' << rr.rdclass << ' ' << rr.rdtype;
+              if (!std::holds_alternative<dns::opt_rdata>(rr.rdata))
+                // These fields are repurposed by OPT pseudo RRs
+                cout << ' ' << rr.ttl.count() << ' ' << rr.rdclass;
+              else
+                cout << " - -";
+              cout << ' ' << rr.rdtype;
               visit(util::overload(
                   [&](const dns::name& name) {
                     cout << ' ';
@@ -239,6 +237,30 @@ void process_pkts(InputIterator first, const EndIterator last)
 
                     for (const auto type : nsec.types)
                       cout << ' ' << type;
+                  },
+                  [](const dns::opt_rdata& opt) {
+                    const auto fill  = cout.fill();
+                    const auto flags = cout.flags();
+
+// Version: 0; flags: do; UDP size: 4096 B; ext-rcode: NOERROR
+                    cout
+                      << " version: " << std::dec << static_cast<unsigned>(opt.edns_version)
+                      << "; flags:";
+                    if (opt.dnssec_ok)
+                      cout << " do";
+                    cout
+                      << "; UDP size: " << std::dec << opt.udp_payload_size << " B"
+                      << "; ext-rcode: " << make_error_code(opt.extended_rcode).message()
+                      ;
+                    for (const auto& option : opt.options)
+                    {
+                      cout << "; " << std::dec << option.first << ' ' << std::hex << std::setfill('0');
+                      for (const unsigned octet : option.second)
+                        cout << std::setw(2) << octet;
+                    }
+
+                    cout.fill(fill);
+                    cout.flags(flags);
                   },
                   [](const dns::unknown_rdata& data) {
                     const auto fill  = cout.fill();

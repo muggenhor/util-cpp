@@ -423,6 +423,18 @@ namespace dns
     gsl::span<const std::uint8_t> public_key;
   };
 
+  using edns_options = std::unordered_map<option_code, gsl::span<const std::uint8_t>>;
+
+  struct opt_rdata
+  {
+    std::uint16_t udp_payload_size;
+    dns::errc     extended_rcode;
+    std::uint8_t  edns_version;
+    std::uint16_t flags;
+    bool          dnssec_ok;
+    edns_options  options;
+  };
+
   struct rr
   {
     name                                  labels;
@@ -442,10 +454,9 @@ namespace dns
       , a_rdata
       , aaaa_rdata
       , name                           
+      , opt_rdata
       >                                   rdata;
   };
-
-  using edns_options = std::unordered_map<option_code, gsl::span<const std::uint8_t>>;
 
   struct query
   {
@@ -454,16 +465,12 @@ namespace dns
     bool is_recursion_desired;
     bool authentic_data;
     bool checking_disabled;
-    std::optional<std::uint8_t> edns_version;
-    std::uint16_t udp_payload_size;
-    bool dnssec_ok;
+    std::optional<opt_rdata> edns;
 
     std::vector<question> questions;
     std::vector<rr>       answers;
     std::vector<rr>       authority;
     std::vector<rr>       additional;
-
-    edns_options options;
   };
 
   struct reply
@@ -475,16 +482,12 @@ namespace dns
     bool is_recursion_available;
     bool authentic_data;
     bool checking_disabled;
-    std::optional<std::uint8_t> edns_version;
-    std::uint16_t udp_payload_size;
-    bool dnssec_ok;
+    std::optional<opt_rdata> edns;
 
     std::vector<question> questions;
     std::vector<rr>       answers;
     std::vector<rr>       authority;
     std::vector<rr>       additional;
-
-    edns_options options;
   };
 
   using message = std::variant<query, reply>;
