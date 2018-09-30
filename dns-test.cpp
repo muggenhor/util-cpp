@@ -1,5 +1,6 @@
 #include "dns.hpp"
 #include "overload.hpp"
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
@@ -272,7 +273,18 @@ void process_pkts(InputIterator first, const EndIterator last)
   }
 }
 
-int main()
+int main(const int argc, const char** const argv)
 {
-  process_pkts(std::istreambuf_iterator(std::cin), std::istreambuf_iterator<char>());
+  if (argc < 2)
+  {
+    process_pkts(std::istreambuf_iterator(std::cin), std::istreambuf_iterator<char>());
+  }
+  else
+  {
+    for (int i = 1; i < argc; ++i)
+    {
+      std::ifstream input{argv[i], std::ios_base::in | std::ios_base::binary};
+      process_pkts(std::istreambuf_iterator(input), std::istreambuf_iterator<char>());
+    }
+  }
 }
