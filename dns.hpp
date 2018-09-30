@@ -332,6 +332,7 @@ namespace dns
   std::ostream& operator<<(std::ostream& os, msgopcode o);
   std::ostream& operator<<(std::ostream& os, rr_type r);
   std::ostream& operator<<(std::ostream& os, rr_class r);
+  std::ostream& operator<<(std::ostream& os, option_code o);
   std::ostream& operator<<(std::ostream& os, digest_algorithm algo);
   std::ostream& operator<<(std::ostream& os, security_algorithm algo);
 

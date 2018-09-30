@@ -194,6 +194,29 @@ namespace dns
     return os << "(unknown:" << static_cast<unsigned>(r) << ')';
   }
 
+  std::ostream& operator<<(std::ostream& os, option_code o)
+  {
+    switch (o)
+    {
+      case option_code::LLQ:                return os << "LLQ";
+      case option_code::UL:                 return os << "UL";
+      case option_code::NSID:               return os << "NSID";
+      case option_code::DAU:                return os << "DAU";
+      case option_code::DHU:                return os << "DHU";
+      case option_code::N3U:                return os << "N3U";
+      case option_code::edns_client_subnet: return os << "edns_client_subnet";
+      case option_code::EDNS_EXPIRE:        return os << "EDNS_EXPIRE";
+      case option_code::COOKIE:             return os << "COOKIE";
+      case option_code::edns_tcp_keepalive: return os << "edns_tcp_keepalive";
+      case option_code::padding:            return os << "padding";
+      case option_code::CHAIN:              return os << "CHAIN";
+      case option_code::edns_key_tag:       return os << "edns_key_tag";
+      case option_code::device_id:          return os << "device_id";
+    }
+
+    return os << "(unknown:" << static_cast<unsigned>(o) << ')';
+  }
+
   std::ostream& operator<<(std::ostream& os, digest_algorithm algo)
   {
     switch (algo)
