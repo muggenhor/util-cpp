@@ -82,6 +82,65 @@ namespace dns
     return instance;
   }
 
+  const std::error_category& parser_category() noexcept
+  {
+    struct parser_error_category final : public std::error_category
+    {
+      const char* name() const noexcept override { return "dns-parser"; }
+
+      std::string message(int i) const override
+      {
+        switch (static_cast<dns::parser_error>(i))
+        {
+          case parser_error::no_error:
+            return "no error";;
+          case parser_error::not_enough_data:
+            return "not enought data";
+          case parser_error::invalid_domain_label_type:
+            return "rejected or unsupported label type in domain name";
+          case parser_error::too_many_domain_label_pointers:
+            return "limit of label pointers to follow in domain name exceeded";
+          case parser_error::invalid_bitmap_window_size:
+            return "window size of type bitmap outside of valid range";
+          case parser_error::invalid_data_size:
+            return "size of data section different than required";
+          case parser_error::multiple_opt_records:
+            return "more than the maximum of 1 OPT record in message";
+        }
+
+        char msg[64];
+        snprintf(msg, sizeof(msg), "unknown %s error: %d", this->name(), i);
+        return std::string(msg);
+      }
+
+      std::error_condition default_error_condition(int i) const noexcept override
+      {
+        switch (static_cast<dns::parser_error>(i))
+        {
+          case parser_error::no_error:
+            return {i, *this};
+          case parser_error::not_enough_data:
+            return std::errc::no_message_available;
+          case parser_error::invalid_domain_label_type:
+            return std::errc::protocol_error;
+          case parser_error::too_many_domain_label_pointers:
+            return std::errc::too_many_links;
+          case parser_error::invalid_bitmap_window_size:
+            return std::errc::protocol_error;
+          case parser_error::invalid_data_size:
+            return std::errc::protocol_error;
+          case parser_error::multiple_opt_records:
+            return std::errc::protocol_error;
+        }
+
+        return {i, *this};
+      }
+    };
+    static const parser_error_category instance;
+
+    return instance;
+  }
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   std::ostream& operator<<(std::ostream& os, msgopcode o)
@@ -304,7 +363,7 @@ namespace dns
       for (;;)
       {
         if (pos.empty())
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
 
         const auto label_size = pos[0];
         pos = pos.subspan(1);
@@ -329,7 +388,7 @@ namespace dns
           }();
 
         if (!(label_type & labels_to_accept))
-          return unexpected(make_error_code(std::errc::protocol_error));
+          return unexpected(parser_error::invalid_domain_label_type);
 
         switch (label_type)
         {
@@ -337,10 +396,10 @@ namespace dns
           case label_type_mask::compression_pointer:
           {
             if (pos.empty())
-              return unexpected(make_error_code(std::errc::no_message_available));
+              return unexpected(parser_error::not_enough_data);
             // prevent infinite loops
             if (++pointer_labels_followed > max_follow_count)
-              return unexpected(make_error_code(std::errc::too_many_links));
+              return unexpected(parser_error::too_many_domain_label_pointers);
 
             const auto offset = (static_cast<std::uint16_t>(label_size & 0x3fU) << 8U)
                               | ((pos[0] & 0xffU) << 0U)
@@ -352,21 +411,21 @@ namespace dns
               name_is_compressed = true;
             }
             if (offset >= frame.size())
-              return unexpected(make_error_code(std::errc::no_message_available));
+              return unexpected(parser_error::not_enough_data);
             pos = frame.subspan(offset);
             break;
           }
           case label_type_mask::normal:
           {
             if (pos.size() < label_size)
-              return unexpected(make_error_code(std::errc::no_message_available));
+              return unexpected(parser_error::not_enough_data);
 
             labels.emplace_back(reinterpret_cast<const char*>(pos.data()), label_size);
             pos = pos.subspan(label_size);
             break;
           }
           default:
-            return unexpected(make_error_code(std::errc::protocol_error));
+            return unexpected(parser_error::invalid_domain_label_type);
         }
       }
       if (!name_is_compressed)
@@ -384,12 +443,12 @@ namespace dns
       do
       {
         if (input.size() < 2)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
         const auto window = static_cast<std::uint16_t>(input[0] << 8U);
         const auto bitmap_length = input[1];
         if (bitmap_length < 1 || bitmap_length > 32
          || input.size() < 2 + bitmap_length)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::invalid_bitmap_window_size);
         const auto bitmap = input.subspan(2, bitmap_length);
         input = input.subspan(2 + bitmap_length);
         unsigned idx = 0U;
@@ -414,7 +473,7 @@ namespace dns
     static_assert(sizeof(frame[0]) * CHAR_BIT == 8, "This code is written under the assumption of a 8-bit byte");
 
     if (frame.size() < 12)
-      return unexpected(make_error_code(std::errc::no_message_available));
+      return unexpected(parser_error::not_enough_data);
 
     const std::uint16_t txid  = static_cast<std::uint16_t>(frame[0]) << 8U | frame[1];
     const std::uint16_t flags = static_cast<std::uint16_t>(frame[2]) << 8U | frame[3];
@@ -452,7 +511,7 @@ namespace dns
         return unexpected(name.error());
       }
       if (cur.size() < 4)
-        return unexpected(make_error_code(std::errc::no_message_available));
+        return unexpected(parser_error::not_enough_data);
 
       question question{
           std::move(labels)
@@ -488,11 +547,11 @@ namespace dns
         return unexpected(name.error());
       }
       if (cur.size() < 10)
-        return unexpected(make_error_code(std::errc::no_message_available));
+        return unexpected(parser_error::not_enough_data);
 
       const auto rdlength = static_cast<std::uint16_t>(cur[8]) << 8U | cur[9];
       if (cur.size() < 10 + rdlength)
-        return unexpected(make_error_code(std::errc::no_message_available));
+        return unexpected(parser_error::not_enough_data);
 
       const auto type    = static_cast<rr_type>(static_cast<std::uint16_t>(cur[0]) << 8U | cur[1]);
       const auto rdclass = static_cast<rr_class>(static_cast<std::uint16_t>(cur[2]) << 8U | cur[3]);
@@ -524,7 +583,7 @@ namespace dns
       else if (type == rr_type::MX)
       {
         if (rdata_frame.size() < 2)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
         const auto preference = static_cast<std::uint16_t>((rdata_frame[0] << 8U) | rdata_frame[1]);
         if (auto exchange = parse_domain_name(frame, rdata_frame.subspan(2)); exchange)
           rdata = mx_rdata{preference, std::move(exchange->first)};
@@ -539,7 +598,7 @@ namespace dns
           return unexpected(hostmaster.error());
         rdata_frame = hostmaster->second;
         if (rdata_frame.size() < 20)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
         const auto serial = static_cast<std::uint32_t>(
               static_cast<std::uint32_t>(rdata_frame[ 0] & 0xffU) << 24U
             | static_cast<std::uint32_t>(rdata_frame[ 1] & 0xffU) << 16U
@@ -582,11 +641,11 @@ namespace dns
         do
         {
           if (rdata_frame.size() < 1)
-            return unexpected(make_error_code(std::errc::no_message_available));
+            return unexpected(parser_error::not_enough_data);
           const auto string_size = rdata_frame[0];
           rdata_frame = rdata_frame.subspan(1);
           if (rdata_frame.size() < string_size)
-            return unexpected(make_error_code(std::errc::no_message_available));
+            return unexpected(parser_error::not_enough_data);
           txt.strings.emplace_back(reinterpret_cast<const char*>(rdata_frame.data()), string_size);
           rdata_frame = rdata_frame.subspan(string_size);
         } while (!rdata_frame.empty());
@@ -596,7 +655,7 @@ namespace dns
             || type == rr_type::CDS)
       {
         if (rdata_frame.size() < 4)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
         ds_rdata ds;
         ds.key_tag = static_cast<std::uint16_t>(
               static_cast<std::uint16_t>(rdata_frame[0] & 0xffU) <<  8U
@@ -610,15 +669,15 @@ namespace dns
         {
           case digest_algorithm::SHA1:
             if (ds.digest.size() != 160 / 8)
-              return unexpected(make_error_code(std::errc::protocol_error));
+              return unexpected(parser_error::invalid_data_size);
             break;
           case digest_algorithm::SHA256:
             if (ds.digest.size() != 256 / 8)
-              return unexpected(make_error_code(std::errc::protocol_error));
+              return unexpected(parser_error::invalid_data_size);
             break;
           case digest_algorithm::SHA384:
             if (ds.digest.size() != 384 / 8)
-              return unexpected(make_error_code(std::errc::protocol_error));
+              return unexpected(parser_error::invalid_data_size);
             break;
           case digest_algorithm::ECC_GOST:
             break;
@@ -629,7 +688,7 @@ namespace dns
             || type == rr_type::CDNSKEY)
       {
         if (rdata_frame.size() < 4)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
         dnskey_rdata dnskey;
         dnskey.flags = static_cast<std::uint16_t>(
               static_cast<std::uint16_t>(rdata_frame[0] & 0xffU) <<  8U
@@ -644,7 +703,7 @@ namespace dns
       else if (type == rr_type::RRSIG)
       {
         if (rdata_frame.size() < 18)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
         rrsig_rdata rrsig;
         rrsig.covered_type = static_cast<rr_type>(
               static_cast<std::uint16_t>(rdata_frame[ 0] & 0xffU) <<  8U
@@ -702,7 +761,7 @@ namespace dns
       {
         nsec3_rdata nsec;
         if (rdata_frame.size() < 5)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
         nsec.hash_algo = static_cast<digest_algorithm>(rdata_frame[0]);
         const auto flags = rdata_frame[1];
         nsec.opt_out = flags & 0x1;
@@ -712,12 +771,12 @@ namespace dns
             );
         const auto salt_length = rdata_frame[4];
         if (rdata_frame.size() < 5 + salt_length + 1)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
         nsec.salt = rdata_frame.subspan(5, salt_length);
         rdata_frame = rdata_frame.subspan(5 + salt_length);
         const auto hash_length = rdata_frame[0];
         if (rdata_frame.size() < 1 + hash_length)
-          return unexpected(make_error_code(std::errc::no_message_available));
+          return unexpected(parser_error::not_enough_data);
         nsec.next_hashed_name = rdata_frame.subspan(1, hash_length);
         rdata_frame = rdata_frame.subspan(1 + hash_length);
         if (auto types = parse_type_bit_map(rdata_frame);
@@ -730,13 +789,13 @@ namespace dns
       else if (rdclass == rr_class::IN && type == rr_type::A)
       {
         if (rdata_frame.size() != decltype(a_rdata::addr)::extent)
-          return unexpected(make_error_code(std::errc::protocol_error));
+          return unexpected(parser_error::invalid_data_size);
         rdata = a_rdata{rdata_frame};
       }
       else if (rdclass == rr_class::IN && type == rr_type::AAAA)
       {
         if (rdata_frame.size() != decltype(aaaa_rdata::addr)::extent)
-          return unexpected(make_error_code(std::errc::protocol_error));
+          return unexpected(parser_error::invalid_data_size);
         rdata = aaaa_rdata{rdata_frame};
       }
       else if (type == rr_type::OPT)
@@ -750,7 +809,7 @@ namespace dns
         while (!rdata_frame.empty())
         {
           if (rdata_frame.size() < 4)
-            return unexpected(make_error_code(std::errc::no_message_available));
+            return unexpected(parser_error::not_enough_data);
           const auto code = static_cast<option_code>(
                 static_cast<std::uint16_t>(rdata_frame[0] & 0xffU) <<  8U
               | static_cast<std::uint16_t>(rdata_frame[1] & 0xffU) <<  0U
@@ -760,7 +819,7 @@ namespace dns
               | static_cast<std::uint16_t>(rdata_frame[3] & 0xffU) <<  0U
               );
           if (rdata_frame.size() < 4 + length)
-            return unexpected(make_error_code(std::errc::no_message_available));
+            return unexpected(parser_error::not_enough_data);
           options.emplace(code, rdata_frame.subspan(4, length));
           rdata_frame = rdata_frame.subspan(4 + length);
         }
@@ -791,7 +850,7 @@ namespace dns
       if (const auto* const opt = std::get_if<opt_rdata>(&rr.rdata))
       {
         if (edns)
-          return unexpected(make_error_code(std::errc::protocol_error));
+          return unexpected(parser_error::multiple_opt_records);
 
         edns = *opt;
         rcode = edns->extended_rcode;

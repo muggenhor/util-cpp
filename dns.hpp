@@ -330,6 +330,26 @@ namespace dns
     return std::error_code(static_cast<int>(e), rcode_category());
   }
 
+  enum class parser_error
+  {
+    // zero is reserved as not-error for use with std::error_code
+    no_error = 0,
+
+    not_enough_data,
+    invalid_domain_label_type,
+    too_many_domain_label_pointers,
+    invalid_bitmap_window_size,
+    invalid_data_size,
+    multiple_opt_records,
+  };
+
+  const std::error_category& parser_category() noexcept;
+
+  inline std::error_code make_error_code(parser_error e) noexcept
+  {
+    return std::error_code(static_cast<int>(e), parser_category());
+  }
+
   std::ostream& operator<<(std::ostream& os, msgopcode o);
   std::ostream& operator<<(std::ostream& os, rr_type r);
   std::ostream& operator<<(std::ostream& os, rr_class r);
@@ -492,7 +512,18 @@ namespace dns
   };
 
   using message = std::variant<query, reply>;
+}
 
+namespace std
+{
+  template <>
+  struct is_error_code_enum<::dns::rcode> : public true_type {};
+  template <>
+  struct is_error_code_enum<::dns::parser_error> : public true_type {};
+}
+
+namespace dns
+{
   template <typename T>
   using expected = ::util::expected<T, std::error_code>;
 
@@ -504,22 +535,16 @@ namespace dns
     using ::util::unexpected;
 
     if (std::distance(first, last) < 2)
-      return unexpected(make_error_code(std::errc::no_message_available));
+      return unexpected(parser_error::not_enough_data);
     const std::uint16_t len = *first << 8U | (*std::next(first) & 0xffU);
     if (std::distance(first, last) < 2 + len)
-      return unexpected(make_error_code(std::errc::no_message_available));
+      return unexpected(parser_error::not_enough_data);
     const auto next = std::next(first, 2 + len);
     if (auto msg = parse(gsl::span{std::next(first, 2), next}); msg)
       return std::make_pair(std::move(*msg), next);
     else
       return unexpected(msg.error());
   }
-}
-
-namespace std
-{
-  template <>
-  struct is_error_code_enum<::dns::rcode> : public true_type {};
 }
 
 #endif /* INCLUDED_DNS_HPP */
