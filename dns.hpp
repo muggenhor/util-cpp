@@ -30,6 +30,7 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include "expected.hpp"
 
 namespace dns
 {
@@ -492,21 +493,26 @@ namespace dns
 
   using message = std::variant<query, reply>;
 
-  std::optional<message> parse(gsl::span<const std::uint8_t> frame);
+  template <typename T>
+  using expected = ::util::expected<T, std::error_code>;
 
-  inline std::optional<std::pair<message, const std::uint8_t*>>
+  expected<message> parse(gsl::span<const std::uint8_t> frame);
+
+  inline expected<std::pair<message, const std::uint8_t*>>
     parse(const std::uint8_t* const first, const std::uint8_t* const last)
   {
+    using ::util::unexpected;
+
     if (std::distance(first, last) < 2)
-      return std::nullopt;
+      return unexpected(make_error_code(std::errc::no_message_available));
     const std::uint16_t len = *first << 8U | (*std::next(first) & 0xffU);
     if (std::distance(first, last) < 2 + len)
-      return std::nullopt;
+      return unexpected(make_error_code(std::errc::no_message_available));
     const auto next = std::next(first, 2 + len);
     if (auto msg = parse(gsl::span{std::next(first, 2), next}); msg)
       return std::make_pair(std::move(*msg), next);
     else
-      return std::nullopt;
+      return unexpected(msg.error());
   }
 }
 

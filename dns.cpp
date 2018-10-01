@@ -256,6 +256,8 @@ namespace dns
 
   namespace
   {
+    using util::unexpected;
+
     enum class label_type_mask
     {
       // RFC 1035
@@ -286,7 +288,7 @@ namespace dns
       return rhs | lhs;
     }
 
-    std::optional<std::pair<std::vector<std::string_view>, gsl::span<const std::uint8_t> /* unused remainder of name_frame */>>
+    expected<std::pair<std::vector<std::string_view>, gsl::span<const std::uint8_t> /* unused remainder of name_frame */>>
       parse_domain_name(
             const gsl::span<const std::uint8_t> frame
           , gsl::span<const std::uint8_t> name_frame
@@ -302,7 +304,7 @@ namespace dns
       for (;;)
       {
         if (pos.empty())
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::no_message_available));
 
         const auto label_size = pos[0];
         pos = pos.subspan(1);
@@ -327,7 +329,7 @@ namespace dns
           }();
 
         if (!(label_type & labels_to_accept))
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::protocol_error));
 
         switch (label_type)
         {
@@ -335,10 +337,10 @@ namespace dns
           case label_type_mask::compression_pointer:
           {
             if (pos.empty())
-              return std::nullopt;
+              return unexpected(make_error_code(std::errc::no_message_available));
             // prevent infinite loops
             if (++pointer_labels_followed > max_follow_count)
-              return std::nullopt;
+              return unexpected(make_error_code(std::errc::too_many_links));
 
             const auto offset = (static_cast<std::uint16_t>(label_size & 0x3fU) << 8U)
                               | ((pos[0] & 0xffU) << 0U)
@@ -350,21 +352,21 @@ namespace dns
               name_is_compressed = true;
             }
             if (offset >= frame.size())
-              return std::nullopt;
+              return unexpected(make_error_code(std::errc::no_message_available));
             pos = frame.subspan(offset);
             break;
           }
           case label_type_mask::normal:
           {
             if (pos.size() < label_size)
-              return std::nullopt;
+              return unexpected(make_error_code(std::errc::no_message_available));
 
             labels.emplace_back(reinterpret_cast<const char*>(pos.data()), label_size);
             pos = pos.subspan(label_size);
             break;
           }
           default:
-            return std::nullopt;
+            return unexpected(make_error_code(std::errc::protocol_error));
         }
       }
       if (!name_is_compressed)
@@ -375,25 +377,19 @@ namespace dns
 
     /// Parses according to RFC 4034 section 4.1.2: The Type Bit Maps Field
     /// \post on success all of input will have been consumed
-    std::optional<std::set<rr_type>>
+    expected<std::set<rr_type>>
       parse_type_bit_map(gsl::span<const std::uint8_t> input) noexcept
     {
-      std::optional<std::set<rr_type>> types(std::in_place);
+      expected<std::set<rr_type>> types(std::in_place);
       do
       {
         if (input.size() < 2)
-        {
-          types = std::nullopt;
-          break;
-        }
+          return unexpected(make_error_code(std::errc::no_message_available));
         const auto window = static_cast<std::uint16_t>(input[0] << 8U);
         const auto bitmap_length = input[1];
         if (bitmap_length < 1 || bitmap_length > 32
          || input.size() < 2 + bitmap_length)
-        {
-          types = std::nullopt;
-          break;
-        }
+          return unexpected(make_error_code(std::errc::no_message_available));
         const auto bitmap = input.subspan(2, bitmap_length);
         input = input.subspan(2 + bitmap_length);
         unsigned idx = 0U;
@@ -413,12 +409,12 @@ namespace dns
     }
   }
 
-  std::optional<message> parse(const gsl::span<const std::uint8_t> frame)
+  expected<message> parse(const gsl::span<const std::uint8_t> frame)
   {
     static_assert(sizeof(frame[0]) * CHAR_BIT == 8, "This code is written under the assumption of a 8-bit byte");
 
     if (frame.size() < 12)
-      return std::nullopt;
+      return unexpected(make_error_code(std::errc::no_message_available));
 
     const std::uint16_t txid  = static_cast<std::uint16_t>(frame[0]) << 8U | frame[1];
     const std::uint16_t flags = static_cast<std::uint16_t>(frame[2]) << 8U | frame[3];
@@ -453,10 +449,10 @@ namespace dns
       }
       else
       {
-        return std::nullopt;
+        return unexpected(name.error());
       }
       if (cur.size() < 4)
-        return std::nullopt;
+        return unexpected(make_error_code(std::errc::no_message_available));
 
       question question{
           std::move(labels)
@@ -489,14 +485,14 @@ namespace dns
       }
       else
       {
-        return std::nullopt;
+        return unexpected(name.error());
       }
       if (cur.size() < 10)
-        return std::nullopt;
+        return unexpected(make_error_code(std::errc::no_message_available));
 
       const auto rdlength = static_cast<std::uint16_t>(cur[8]) << 8U | cur[9];
       if (cur.size() < 10 + rdlength)
-        return std::nullopt;
+        return unexpected(make_error_code(std::errc::no_message_available));
 
       const auto type    = static_cast<rr_type>(static_cast<std::uint16_t>(cur[0]) << 8U | cur[1]);
       const auto rdclass = static_cast<rr_class>(static_cast<std::uint16_t>(cur[2]) << 8U | cur[3]);
@@ -523,27 +519,27 @@ namespace dns
         if (auto name = parse_domain_name(frame, rdata_frame); name)
           rdata = std::move(name->first);
         else
-          return std::nullopt;
+          return unexpected(name.error());
       }
       else if (type == rr_type::MX)
       {
         if (rdata_frame.size() < 2)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::no_message_available));
         const auto preference = static_cast<std::uint16_t>((rdata_frame[0] << 8U) | rdata_frame[1]);
         if (auto exchange = parse_domain_name(frame, rdata_frame.subspan(2)); exchange)
           rdata = mx_rdata{preference, std::move(exchange->first)};
         else
-          return std::nullopt;
+          return unexpected(exchange.error());
       }
       else if (type == rr_type::SOA)
       {
         auto authority  = parse_domain_name(frame, rdata_frame);
         auto hostmaster = authority ? parse_domain_name(frame, authority->second) : authority;
         if (!authority || !hostmaster)
-          return std::nullopt;
+          return unexpected(hostmaster.error());
         rdata_frame = hostmaster->second;
         if (rdata_frame.size() < 20)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::no_message_available));
         const auto serial = static_cast<std::uint32_t>(
               static_cast<std::uint32_t>(rdata_frame[ 0] & 0xffU) << 24U
             | static_cast<std::uint32_t>(rdata_frame[ 1] & 0xffU) << 16U
@@ -586,11 +582,11 @@ namespace dns
         do
         {
           if (rdata_frame.size() < 1)
-            return std::nullopt;
+            return unexpected(make_error_code(std::errc::no_message_available));
           const auto string_size = rdata_frame[0];
           rdata_frame = rdata_frame.subspan(1);
           if (rdata_frame.size() < string_size)
-            return std::nullopt;
+            return unexpected(make_error_code(std::errc::no_message_available));
           txt.strings.emplace_back(reinterpret_cast<const char*>(rdata_frame.data()), string_size);
           rdata_frame = rdata_frame.subspan(string_size);
         } while (!rdata_frame.empty());
@@ -600,7 +596,7 @@ namespace dns
             || type == rr_type::CDS)
       {
         if (rdata_frame.size() < 4)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::no_message_available));
         ds_rdata ds;
         ds.key_tag = static_cast<std::uint16_t>(
               static_cast<std::uint16_t>(rdata_frame[0] & 0xffU) <<  8U
@@ -614,15 +610,15 @@ namespace dns
         {
           case digest_algorithm::SHA1:
             if (ds.digest.size() != 160 / 8)
-              return std::nullopt;
+              return unexpected(make_error_code(std::errc::protocol_error));
             break;
           case digest_algorithm::SHA256:
             if (ds.digest.size() != 256 / 8)
-              return std::nullopt;
+              return unexpected(make_error_code(std::errc::protocol_error));
             break;
           case digest_algorithm::SHA384:
             if (ds.digest.size() != 384 / 8)
-              return std::nullopt;
+              return unexpected(make_error_code(std::errc::protocol_error));
             break;
           case digest_algorithm::ECC_GOST:
             break;
@@ -633,7 +629,7 @@ namespace dns
             || type == rr_type::CDNSKEY)
       {
         if (rdata_frame.size() < 4)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::no_message_available));
         dnskey_rdata dnskey;
         dnskey.flags = static_cast<std::uint16_t>(
               static_cast<std::uint16_t>(rdata_frame[0] & 0xffU) <<  8U
@@ -648,7 +644,7 @@ namespace dns
       else if (type == rr_type::RRSIG)
       {
         if (rdata_frame.size() < 18)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::no_message_available));
         rrsig_rdata rrsig;
         rrsig.covered_type = static_cast<rr_type>(
               static_cast<std::uint16_t>(rdata_frame[ 0] & 0xffU) <<  8U
@@ -689,7 +685,7 @@ namespace dns
         }
         else
         {
-          return std::nullopt;
+          return unexpected(name.error());
         }
         rrsig.signature = rdata_frame;
         rdata = std::move(rrsig);
@@ -697,16 +693,16 @@ namespace dns
       else if (type == rr_type::NSEC)
       {
         auto next_domain_name  = parse_domain_name(frame, rdata_frame, 0|label_type_mask::normal);
-        auto types             = next_domain_name ? parse_type_bit_map(next_domain_name->second) : std::optional<std::set<rr_type>>(std::nullopt);
+        auto types             = next_domain_name ? parse_type_bit_map(next_domain_name->second) : expected<std::set<rr_type>>(unexpected(next_domain_name.error()));
         if (!next_domain_name || !types)
-          return std::nullopt;
+          return unexpected(types.error());
         rdata = nsec_rdata{std::move(next_domain_name->first), std::move(*types)};
       }
       else if (type == rr_type::NSEC3)
       {
         nsec3_rdata nsec;
         if (rdata_frame.size() < 5)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::no_message_available));
         nsec.hash_algo = static_cast<digest_algorithm>(rdata_frame[0]);
         const auto flags = rdata_frame[1];
         nsec.opt_out = flags & 0x1;
@@ -716,31 +712,31 @@ namespace dns
             );
         const auto salt_length = rdata_frame[4];
         if (rdata_frame.size() < 5 + salt_length + 1)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::no_message_available));
         nsec.salt = rdata_frame.subspan(5, salt_length);
         rdata_frame = rdata_frame.subspan(5 + salt_length);
         const auto hash_length = rdata_frame[0];
         if (rdata_frame.size() < 1 + hash_length)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::no_message_available));
         nsec.next_hashed_name = rdata_frame.subspan(1, hash_length);
         rdata_frame = rdata_frame.subspan(1 + hash_length);
         if (auto types = parse_type_bit_map(rdata_frame);
             types)
           nsec.types = std::move(*types);
         else
-          return std::nullopt;
+          return unexpected(types.error());
         rdata = std::move(nsec);
       }
       else if (rdclass == rr_class::IN && type == rr_type::A)
       {
         if (rdata_frame.size() != decltype(a_rdata::addr)::extent)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::protocol_error));
         rdata = a_rdata{rdata_frame};
       }
       else if (rdclass == rr_class::IN && type == rr_type::AAAA)
       {
         if (rdata_frame.size() != decltype(aaaa_rdata::addr)::extent)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::protocol_error));
         rdata = aaaa_rdata{rdata_frame};
       }
       else if (type == rr_type::OPT)
@@ -754,7 +750,7 @@ namespace dns
         while (!rdata_frame.empty())
         {
           if (rdata_frame.size() < 4)
-            return std::nullopt;
+            return unexpected(make_error_code(std::errc::no_message_available));
           const auto code = static_cast<option_code>(
                 static_cast<std::uint16_t>(rdata_frame[0] & 0xffU) <<  8U
               | static_cast<std::uint16_t>(rdata_frame[1] & 0xffU) <<  0U
@@ -764,7 +760,7 @@ namespace dns
               | static_cast<std::uint16_t>(rdata_frame[3] & 0xffU) <<  0U
               );
           if (rdata_frame.size() < 4 + length)
-            return std::nullopt;
+            return unexpected(make_error_code(std::errc::no_message_available));
           options.emplace(code, rdata_frame.subspan(4, length));
           rdata_frame = rdata_frame.subspan(4 + length);
         }
@@ -795,7 +791,7 @@ namespace dns
       if (const auto* const opt = std::get_if<opt_rdata>(&rr.rdata))
       {
         if (edns)
-          return std::nullopt;
+          return unexpected(make_error_code(std::errc::protocol_error));
 
         edns = *opt;
         rcode = edns->extended_rcode;

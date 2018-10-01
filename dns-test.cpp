@@ -242,7 +242,6 @@ void process_pkts(InputIterator first, const EndIterator last)
                     const auto fill  = cout.fill();
                     const auto flags = cout.flags();
 
-// Version: 0; flags: do; UDP size: 4096 B; ext-rcode: NOERROR
                     cout
                       << " version: " << std::dec << static_cast<unsigned>(opt.edns_version)
                       << "; flags:";
@@ -290,7 +289,8 @@ void process_pkts(InputIterator first, const EndIterator last)
     }
     else
     {
-      cout << "\x1B[31m" "invalid DNS packet" "\x1B[39m\n";
+      cout << "\x1B[31m" "invalid DNS packet" "\x1B[39m: "
+        << msg.error().category().name() << ':' << msg.error().message() << '\n';
     }
   }
 }
