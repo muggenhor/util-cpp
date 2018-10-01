@@ -555,6 +555,174 @@ namespace dns
       } while (types && !input.empty());
       return types;
     }
+
+    expected<decltype(rr::rdata)> parse_rdata(
+        const dns::rcode rcode, const rr_type type, const rr_class rdclass, const std::chrono::duration<std::uint32_t> ttl,
+        const gsl::span<const std::uint8_t> frame, gsl::span<const std::uint8_t> rdata_frame)
+    {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+      if (type == rr_type::CNAME
+       || type == rr_type::PTR
+       || type == rr_type::NS
+       // deprecated records
+       || type == rr_type::MD
+       || type == rr_type::MF
+       || type == rr_type::MG
+       || type == rr_type::MR)
+#pragma GCC diagnostic pop
+      {
+        return consume_domain_name(frame, rdata_frame);
+      }
+      else if (type == rr_type::MX)
+      {
+        const auto preference = consume_u16(rdata_frame);
+        auto       name       = consume_domain_name(frame, rdata_frame);
+        return monad::construct<mx_rdata>(preference, std::move(name));
+      }
+      else if (type == rr_type::SOA)
+      {
+        auto       authority    = consume_domain_name(frame, rdata_frame);
+        auto       hostmaster   = consume_domain_name(frame, rdata_frame);
+        const auto serial       = consume_u32(rdata_frame);
+        const auto refresh      = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
+        const auto retry        = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
+        const auto expiry       = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
+        const auto negative_ttl = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
+        return monad::construct<soa_rdata>(std::move(authority), std::move(hostmaster), serial, refresh, retry, expiry, negative_ttl);
+      }
+      else if (type == rr_type::TXT)
+      {
+        txt_rdata txt;
+        do
+        {
+          if (const auto string = consume_u8varsubspan(rdata_frame))
+            txt.strings.emplace_back(reinterpret_cast<const char*>(string->data()), string->size());
+          else
+            return unexpected(std::move(string).error());
+        } while (!rdata_frame.empty());
+        return std::move(txt);
+      }
+      else if (type == rr_type::DS
+            || type == rr_type::CDS)
+      {
+        const auto key_tag     = consume_u16(rdata_frame);
+        const auto algorithm   = monad::construct<security_algorithm>(consume_u8(rdata_frame));
+        const auto digest_type = monad::construct<digest_algorithm>(consume_u8(rdata_frame));
+        const auto digest_size = monad::transform(digest_type, [] (const auto type) {
+            switch (type)
+            {
+              case digest_algorithm::SHA1:
+                return 160 / 8;
+              case digest_algorithm::SHA256:
+                return 256 / 8;
+              case digest_algorithm::SHA384:
+                return 384 / 8;
+              case digest_algorithm::ECC_GOST:
+                break;
+            }
+            return -1;
+          });
+        const auto digest = monad::transform(digest_size,
+            [&](const auto digest_size) -> expected<gsl::span<const std::uint8_t>> {
+            if (digest_size >= 0
+             && rdata_frame.size() > digest_size)
+              return unexpected(parser_error::invalid_data_size);
+            return consume_subspan(rdata_frame, digest_size);
+          });
+        return monad::construct<ds_rdata>(key_tag, algorithm, digest_type, digest);
+      }
+      else if (type == rr_type::DNSKEY
+            || type == rr_type::CDNSKEY)
+      {
+        const auto flags     = consume_u16(rdata_frame);
+        const auto protocol  = consume_u8(rdata_frame);
+        const auto algorithm = monad::construct<security_algorithm>(consume_u8(rdata_frame));
+        return monad::construct<dnskey_rdata>(flags, protocol, algorithm, consume_subspan(rdata_frame));
+      }
+      else if (type == rr_type::RRSIG)
+      {
+        const auto covered_type = monad::construct<rr_type>(consume_u16(rdata_frame));
+        const auto algorithm    = monad::construct<security_algorithm>(consume_u8(rdata_frame));
+        const auto label_count  = consume_u8(rdata_frame);
+        const auto original_ttl = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
+        const auto expiration   = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
+        const auto inception    = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
+        const auto key_tag      = consume_u16(rdata_frame);
+        const auto signer_name  = consume_domain_name(frame, rdata_frame, 0|label_type_mask::normal);
+        return monad::construct<rrsig_rdata>(
+            covered_type, algorithm, label_count, original_ttl, expiration,
+            inception, key_tag, std::move(signer_name), consume_subspan(rdata_frame));
+      }
+      else if (type == rr_type::NSEC)
+      {
+        auto next_domain_name = consume_domain_name(frame, rdata_frame, 0|label_type_mask::normal);
+        auto types            = parse_type_bit_map(rdata_frame);
+        return monad::construct<nsec_rdata>(std::move(next_domain_name), std::move(types));
+      }
+      else if (type == rr_type::NSEC3)
+      {
+        const auto hash_algo        = monad::construct<digest_algorithm>(consume_u8(rdata_frame));
+        const auto opt_out          = monad::transform(consume_u8(rdata_frame), [] (const auto flags) -> bool { return flags & 0x1; });
+        const auto iterations       = consume_u16(rdata_frame);
+        const auto salt             = consume_u8varsubspan(rdata_frame);
+        const auto next_hashed_name = consume_u8varsubspan(rdata_frame);
+              auto types            = parse_type_bit_map(rdata_frame);
+        return monad::construct<nsec3_rdata>(
+            hash_algo, opt_out, iterations, salt, next_hashed_name, std::move(types));
+      }
+      else if (rdclass == rr_class::IN && type == rr_type::A)
+      {
+        if (rdata_frame.size() != decltype(a_rdata::addr)::extent)
+          return unexpected(parser_error::invalid_data_size);
+        return a_rdata{rdata_frame};
+      }
+      else if (rdclass == rr_class::IN && type == rr_type::AAAA)
+      {
+        if (rdata_frame.size() != decltype(aaaa_rdata::addr)::extent)
+          return unexpected(parser_error::invalid_data_size);
+        return aaaa_rdata{rdata_frame};
+      }
+      else if (type == rr_type::OPT)
+      {
+        const auto udp_payload_size = static_cast<std::uint16_t>(rdclass);
+        const auto extended_rcode   = static_cast<dns::rcode>(((ttl.count() >> 20) & 0xff0) | (static_cast<std::uint16_t>(rcode) & 0x0f));
+        const auto edns_version     = static_cast<std::uint8_t>(ttl.count() >> 16);
+        const auto flags            = static_cast<std::uint16_t>(ttl.count());
+        const bool dnssec_ok        = flags & 0b1000'0000'0000'0000;
+        edns_options options;
+        while (!rdata_frame.empty())
+        {
+          const auto code  = monad::construct<option_code>(consume_u16(rdata_frame));
+          const auto value = consume_u16varsubspan(rdata_frame);
+          if (!code || !value)
+            return monad::get_error(code, value);
+          options.emplace(*code, *value);
+        }
+	return opt_rdata{
+              udp_payload_size
+            , extended_rcode
+            , edns_version
+            , flags
+            , dnssec_ok
+            , std::move(options)
+          };
+      }
+
+      return rdata_frame;
+    }
+
+    expected<rr> consume_rr(
+        const dns::rcode rcode, const gsl::span<const std::uint8_t> frame, gsl::span<const std::uint8_t>& rr_frame)
+    {
+      auto       name        = consume_domain_name(frame, rr_frame);
+      const auto type        = monad::construct<rr_type>(consume_u16(rr_frame));
+      const auto rdclass     = monad::construct<rr_class>(consume_u16(rr_frame));
+      const auto ttl         = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rr_frame));
+      const auto rdata       = monad::map(parse_rdata, rcode, type, rdclass, ttl, frame, consume_u16varsubspan(rr_frame));
+
+      return monad::construct<rr>(std::move(name), type, rdclass, ttl, std::move(rdata));
+    }
   }
 
   expected<message> parse(const gsl::span<const std::uint8_t> frame)
@@ -612,208 +780,10 @@ namespace dns
                   :                                      additionals
                   ;
 
-      auto name = consume_domain_name(frame, cur);
-      if (!name)
-        return unexpected(std::move(name).error());
-      if (cur.size() < 10)
-        return unexpected(parser_error::not_enough_data);
-
-      const auto rdlength = static_cast<std::uint16_t>(cur[8]) << 8U | cur[9];
-      if (cur.size() < 10 + rdlength)
-        return unexpected(parser_error::not_enough_data);
-
-      const auto type    = static_cast<rr_type>(static_cast<std::uint16_t>(cur[0]) << 8U | cur[1]);
-      const auto rdclass = static_cast<rr_class>(static_cast<std::uint16_t>(cur[2]) << 8U | cur[3]);
-      const std::chrono::duration<std::uint32_t> ttl{
-          static_cast<std::uint32_t>(cur[4] & 0xffU) << 24U
-        | static_cast<std::uint32_t>(cur[5] & 0xffU) << 16U
-        | static_cast<std::uint32_t>(cur[6] & 0xffU) <<  8U
-        | (cur[7] & 0xffU)};
-
-      auto rdata_frame = cur.subspan(10, rdlength);
-      decltype(rr::rdata) rdata = rdata_frame;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-      if (type == rr_type::CNAME
-       || type == rr_type::PTR
-       || type == rr_type::NS
-       // deprecated records
-       || type == rr_type::MD
-       || type == rr_type::MF
-       || type == rr_type::MG
-       || type == rr_type::MR)
-#pragma GCC diagnostic pop
-      {
-        if (auto name = consume_domain_name(frame, rdata_frame))
-          rdata = std::move(*name);
-        else
-          return unexpected(std::move(name).error());
-      }
-      else if (type == rr_type::MX)
-      {
-        const auto preference = consume_u16(rdata_frame);
-        auto       name       = consume_domain_name(frame, rdata_frame);
-        if (auto mx = monad::construct<mx_rdata>(preference, std::move(name)))
-          rdata = std::move(*mx);
-        else
-          return unexpected(std::move(mx).error());
-      }
-      else if (type == rr_type::SOA)
-      {
-        auto       authority    = consume_domain_name(frame, rdata_frame);
-        auto       hostmaster   = consume_domain_name(frame, rdata_frame);
-        const auto serial       = consume_u32(rdata_frame);
-        const auto refresh      = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
-        const auto retry        = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
-        const auto expiry       = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
-        const auto negative_ttl = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
-        if (auto soa = monad::construct<soa_rdata>(std::move(authority), std::move(hostmaster), serial, refresh, retry, expiry, negative_ttl))
-          rdata = std::move(*soa);
-        else
-          return unexpected(std::move(soa).error());
-      }
-      else if (type == rr_type::TXT)
-      {
-        txt_rdata txt;
-        do
-        {
-          if (const auto string = consume_u8varsubspan(rdata_frame))
-            txt.strings.emplace_back(reinterpret_cast<const char*>(string->data()), string->size());
-          else
-            return unexpected(std::move(string).error());
-        } while (!rdata_frame.empty());
-        rdata = std::move(txt);
-      }
-      else if (type == rr_type::DS
-            || type == rr_type::CDS)
-      {
-        const auto key_tag     = consume_u16(rdata_frame);
-        const auto algorithm   = monad::construct<security_algorithm>(consume_u8(rdata_frame));
-        const auto digest_type = monad::construct<digest_algorithm>(consume_u8(rdata_frame));
-        const auto digest_size = monad::transform(digest_type, [] (const auto type) {
-            switch (type)
-            {
-              case digest_algorithm::SHA1:
-                return 160 / 8;
-              case digest_algorithm::SHA256:
-                return 256 / 8;
-              case digest_algorithm::SHA384:
-                return 384 / 8;
-              case digest_algorithm::ECC_GOST:
-                break;
-            }
-            return -1;
-          });
-        const auto digest = monad::transform(digest_size,
-            [&](const auto digest_size) -> expected<gsl::span<const std::uint8_t>> {
-            if (digest_size >= 0
-             && rdata_frame.size() > digest_size)
-              return unexpected(parser_error::invalid_data_size);
-            return consume_subspan(rdata_frame, digest_size);
-          });
-        if (auto ds = monad::construct<ds_rdata>(key_tag, algorithm, digest_type, digest))
-          rdata = std::move(*ds);
-        else
-          return unexpected(std::move(ds).error());
-      }
-      else if (type == rr_type::DNSKEY
-            || type == rr_type::CDNSKEY)
-      {
-        const auto flags     = consume_u16(rdata_frame);
-        const auto protocol  = consume_u8(rdata_frame);
-        const auto algorithm = monad::construct<security_algorithm>(consume_u8(rdata_frame));
-        if (auto dnskey = monad::construct<dnskey_rdata>(flags, protocol, algorithm, consume_subspan(rdata_frame)))
-          rdata = std::move(*dnskey);
-        else
-          return unexpected(std::move(dnskey).error());
-      }
-      else if (type == rr_type::RRSIG)
-      {
-        const auto covered_type = monad::construct<rr_type>(consume_u16(rdata_frame));
-        const auto algorithm    = monad::construct<security_algorithm>(consume_u8(rdata_frame));
-        const auto label_count  = consume_u8(rdata_frame);
-        const auto original_ttl = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
-        const auto expiration   = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
-        const auto inception    = monad::construct<std::chrono::duration<std::uint32_t>>(consume_u32(rdata_frame));
-        const auto key_tag      = consume_u16(rdata_frame);
-        const auto signer_name  = consume_domain_name(frame, rdata_frame, 0|label_type_mask::normal);
-        if (auto rrsig = monad::construct<rrsig_rdata>(
-            covered_type, algorithm, label_count, original_ttl, expiration,
-            inception, key_tag, std::move(signer_name), consume_subspan(rdata_frame)))
-          rdata = std::move(*rrsig);
-        else
-          return unexpected(std::move(rrsig).error());
-      }
-      else if (type == rr_type::NSEC)
-      {
-        auto next_domain_name = consume_domain_name(frame, rdata_frame, 0|label_type_mask::normal);
-        auto types            = parse_type_bit_map(rdata_frame);
-        if (auto nsec = monad::construct<nsec_rdata>(std::move(next_domain_name), std::move(types)))
-          rdata = std::move(*nsec);
-        else
-          return unexpected(std::move(nsec).error());
-      }
-      else if (type == rr_type::NSEC3)
-      {
-        const auto hash_algo        = monad::construct<digest_algorithm>(consume_u8(rdata_frame));
-        const auto opt_out          = monad::transform(consume_u8(rdata_frame), [] (const auto flags) -> bool { return flags & 0x1; });
-        const auto iterations       = consume_u16(rdata_frame);
-        const auto salt             = consume_u8varsubspan(rdata_frame);
-        const auto next_hashed_name = consume_u8varsubspan(rdata_frame);
-              auto types            = parse_type_bit_map(rdata_frame);
-        if (auto nsec = monad::construct<nsec3_rdata>(
-            hash_algo, opt_out, iterations, salt, next_hashed_name, std::move(types)))
-          rdata = std::move(*nsec);
-        else
-          return unexpected(std::move(nsec).error());
-      }
-      else if (rdclass == rr_class::IN && type == rr_type::A)
-      {
-        if (rdata_frame.size() != decltype(a_rdata::addr)::extent)
-          return unexpected(parser_error::invalid_data_size);
-        rdata = a_rdata{rdata_frame};
-      }
-      else if (rdclass == rr_class::IN && type == rr_type::AAAA)
-      {
-        if (rdata_frame.size() != decltype(aaaa_rdata::addr)::extent)
-          return unexpected(parser_error::invalid_data_size);
-        rdata = aaaa_rdata{rdata_frame};
-      }
-      else if (type == rr_type::OPT)
-      {
-        const auto udp_payload_size = static_cast<std::uint16_t>(rdclass);
-        const auto extended_rcode   = static_cast<dns::rcode>(((ttl.count() >> 20) & 0xff0) | (static_cast<std::uint16_t>(rcode) & 0x0f));
-        const auto edns_version     = static_cast<std::uint8_t>(ttl.count() >> 16);
-        const auto flags            = static_cast<std::uint16_t>(ttl.count());
-        const bool dnssec_ok        = flags & 0b1000'0000'0000'0000;
-        edns_options options;
-        while (!rdata_frame.empty())
-        {
-          const auto code  = monad::construct<option_code>(consume_u16(rdata_frame));
-          const auto value = consume_u16varsubspan(rdata_frame);
-          if (!code || !value)
-            return monad::get_error(code, value);
-          options.emplace(*code, *value);
-        }
-	rdata = opt_rdata{
-              udp_payload_size
-            , extended_rcode
-            , edns_version
-            , flags
-            , dnssec_ok
-            , std::move(options)
-          };
-      }
-
-      rr rr{
-          std::move(*name)
-        , type
-        , rdclass
-        , ttl
-        , std::move(rdata)
-      };
-      rrset.push_back(std::move(rr));
-      cur = cur.subspan(10 + rdlength);
+      if (auto rr = consume_rr(rcode, frame, cur))
+        rrset.push_back(std::move(*rr));
+      else
+        return unexpected(std::move(rr).error());
     }
 
     std::optional<opt_rdata> edns;
