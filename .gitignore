@@ -1,2 +1,6 @@
 *.sw[pon]
 /[Bb]uild/
+*.[od]
+/callback
+/dns-test
+/dns-test-afl
