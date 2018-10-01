@@ -1,9 +1,11 @@
+#include <cassert>
 #include <climits>
 #include <cstddef>
 #include <ostream>
 #include <optional>
 #include <system_error>
 #include "dns.hpp"
+#include "monads.hpp"
 
 namespace dns
 {
@@ -317,6 +319,52 @@ namespace dns
   {
     using util::unexpected;
 
+    expected<std::uint8_t>
+      consume_u8(gsl::span<const std::uint8_t>& input) noexcept
+    {
+      if (input.size() < 1)
+        return unexpected(parser_error::not_enough_data);
+      auto r = input[0];
+      input = input.subspan<1>();
+      return r;
+    }
+
+    expected<gsl::span<const std::uint8_t>>
+    subspan(gsl::span<const std::uint8_t> span, std::ptrdiff_t offset, std::ptrdiff_t count = -1) noexcept
+    {
+      assert(offset >= 0);
+      if (span.size() < offset
+       || (count >= 0 && span.size() - offset < count))
+        return unexpected(parser_error::not_enough_data);
+
+      if (count < 0)
+        return span.subspan(offset);
+      else
+        return span.subspan(offset, count);
+    }
+
+    expected<gsl::span<const std::uint8_t>>
+    consume_subspan(gsl::span<const std::uint8_t>& span, const std::ptrdiff_t count = -1) noexcept
+    {
+      auto r = subspan(span, 0, count);
+      if (r)
+      {
+        if (count < 0)
+          span = {};
+        else
+          span = span.subspan(count);
+      }
+      return r;
+    }
+
+    expected<gsl::span<const std::uint8_t>>
+    consume_u8varsubspan(gsl::span<const std::uint8_t>& span) noexcept
+    {
+      return monad::transform(consume_u8(span), [&] (const auto length) {
+          return consume_subspan(span, length);
+        });
+    }
+
     enum class label_type_mask
     {
       // RFC 1035
@@ -362,14 +410,10 @@ namespace dns
       auto pos = name_frame;
       for (;;)
       {
-        if (pos.empty())
-          return unexpected(parser_error::not_enough_data);
-
-        const auto label_size = pos[0];
-        pos = pos.subspan(1);
-        if (label_size <= 0)
+        const auto label_size = consume_u8(pos);
+        if (label_size && *label_size <= 0)
           break;
-        const auto label_type = [&] {
+        const auto label_type = monad::transform(label_size, [&](std::uint8_t label_size) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
             switch (static_cast<std::uint8_t>(label_size & 0b1100'0000))
@@ -385,43 +429,44 @@ namespace dns
                 return label_type_mask::unallocated;
             }
 #pragma GCC diagnostic pop
-          }();
+          });
 
-        if (!(label_type & labels_to_accept))
+        if (!label_type)
+          return unexpected(label_type.error());
+        if (!(*label_type & labels_to_accept))
           return unexpected(parser_error::invalid_domain_label_type);
 
-        switch (label_type)
+        switch (*label_type)
         {
           // Handle name pointers, which terminate a sequence of labels
           case label_type_mask::compression_pointer:
           {
-            if (pos.empty())
-              return unexpected(parser_error::not_enough_data);
             // prevent infinite loops
             if (++pointer_labels_followed > max_follow_count)
               return unexpected(parser_error::too_many_domain_label_pointers);
 
-            const auto offset = (static_cast<std::uint16_t>(label_size & 0x3fU) << 8U)
-                              | ((pos[0] & 0xffU) << 0U)
-                              ;
-            pos = pos.subspan(1);
+            const auto offset = monad::transform(consume_u8(pos), [&](std::uint8_t lsb) {
+                return static_cast<std::uint16_t>((*label_size & 0x3f) << 8 | lsb);
+              });
             if (!name_is_compressed)
             {
               name_frame = pos;
               name_is_compressed = true;
             }
-            if (offset >= frame.size())
-              return unexpected(parser_error::not_enough_data);
-            pos = frame.subspan(offset);
+            if (auto new_pos = monad::transform(offset, [&] (const auto offset) {
+                  return subspan(frame, offset);
+                }))
+              pos = *new_pos;
+            else
+              return unexpected(new_pos.error());
             break;
           }
           case label_type_mask::normal:
           {
-            if (pos.size() < label_size)
-              return unexpected(parser_error::not_enough_data);
-
-            labels.emplace_back(reinterpret_cast<const char*>(pos.data()), label_size);
-            pos = pos.subspan(label_size);
+            if (const auto label = consume_subspan(pos, *label_size))
+              labels.emplace_back(reinterpret_cast<const char*>(label->data()), label->size());
+            else
+              return unexpected(label.error());
             break;
           }
           default:
@@ -442,24 +487,24 @@ namespace dns
       expected<std::set<rr_type>> types(std::in_place);
       do
       {
-        if (input.size() < 2)
-          return unexpected(parser_error::not_enough_data);
-        const auto window = static_cast<std::uint16_t>(input[0] << 8U);
-        const auto bitmap_length = input[1];
-        if (bitmap_length < 1 || bitmap_length > 32
-         || input.size() < 2 + bitmap_length)
-          return unexpected(parser_error::invalid_bitmap_window_size);
-        const auto bitmap = input.subspan(2, bitmap_length);
-        input = input.subspan(2 + bitmap_length);
+        const auto window = consume_u8(input);
+        const auto bitmap = consume_u8varsubspan(input);
+        if (!window || !bitmap || bitmap->empty() || bitmap->size() > 32)
+        {
+          return unexpected(monad::map([](const auto&...) {
+              return unexpected(parser_error::invalid_bitmap_window_size);
+            }, window, bitmap).error());
+        }
+
         unsigned idx = 0U;
-        for (const unsigned octet : bitmap)
+        for (const unsigned octet : *bitmap)
         {
           const unsigned offset = idx++;
           for (unsigned bit = 0; bit < 8; ++bit)
           {
             if (octet & (1U << (7 - bit)))
             {
-              types->emplace(static_cast<rr_type>(window | (offset * 8U + bit)));
+              types->emplace(static_cast<rr_type>(*window | (offset * 8U + bit)));
             }
           }
         }
