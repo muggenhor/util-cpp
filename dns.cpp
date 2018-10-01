@@ -7,7 +7,7 @@
 
 namespace dns
 {
-  const std::error_category& dns_category() noexcept
+  const std::error_category& rcode_category() noexcept
   {
     struct dns_error_category final : public std::error_category
     {
@@ -15,29 +15,29 @@ namespace dns
 
       std::string message(int i) const override
       {
-        switch (static_cast<dns::errc>(i))
+        switch (static_cast<dns::rcode>(i))
         {
-          case errc::no_error:
+          case rcode::no_error:
             return "no error";;
-          case errc::format_error:
+          case rcode::format_error:
             return "format error";
-          case errc::server_failure:
+          case rcode::server_failure:
             return "server failure";
-          case errc::name_error:
+          case rcode::name_error:
             return "no such name exists";
-          case errc::not_implemented:
+          case rcode::not_implemented:
             return "not implemented";
-          case errc::refused:
+          case rcode::refused:
             return "refused";
-          case errc::yxdomain:
+          case rcode::yxdomain:
             return "name exists when it shouldn't";
-          case errc::yxrrset:
+          case rcode::yxrrset:
             return "rrset exists when it shouldn't";
-          case errc::nxrrset:
+          case rcode::nxrrset:
             return "no such rrset exists";
-          case errc::notauth:
+          case rcode::notauth:
             return "server not authoritative for specified zone";
-          case errc::notzone:
+          case rcode::notzone:
             return "a specified name is outside of the specified zone";
         }
 
@@ -48,29 +48,29 @@ namespace dns
 
       std::error_condition default_error_condition(int i) const noexcept override
       {
-        switch (static_cast<dns::errc>(i))
+        switch (static_cast<dns::rcode>(i))
         {
-          case errc::no_error:
+          case rcode::no_error:
             return {i, *this};
-          case errc::format_error:
+          case rcode::format_error:
             break;
-          case errc::server_failure:
+          case rcode::server_failure:
             break;
-          case errc::name_error:
+          case rcode::name_error:
             break;
-          case errc::not_implemented:
+          case rcode::not_implemented:
             return std::errc::function_not_supported;
-          case errc::refused:
+          case rcode::refused:
             return std::errc::operation_not_permitted;
-          case errc::yxdomain:
+          case rcode::yxdomain:
             break;
-          case errc::yxrrset:
+          case rcode::yxrrset:
             break;
-          case errc::nxrrset:
+          case rcode::nxrrset:
             break;
-          case errc::notauth:
+          case rcode::notauth:
             break;
-          case errc::notzone:
+          case rcode::notzone:
             break;
         }
 
@@ -429,7 +429,7 @@ namespace dns
     const bool is_truncated            = (flags >>  9U) & 0x1U;
     const bool is_recursion_desired    = (flags >>  8U) & 0x1U;
     const bool is_recursion_available  = (flags >>  7U) & 0x1U;
-    errc rcode                           {(flags >>  0U) & 0xfU};
+    dns::rcode rcode                     {(flags >>  0U) & 0xfU};
 
     // RFC 2535 6.1
     const bool authentic_data          = (flags >>  5U) & 0x1U;
@@ -746,7 +746,7 @@ namespace dns
       else if (type == rr_type::OPT)
       {
         const auto udp_payload_size = static_cast<std::uint16_t>(rdclass);
-        const auto extended_rcode   = static_cast<errc>(((ttl.count() >> 20) & 0xff0) | (static_cast<std::uint16_t>(rcode) & 0x0f));
+        const auto extended_rcode   = static_cast<dns::rcode>(((ttl.count() >> 20) & 0xff0) | (static_cast<std::uint16_t>(rcode) & 0x0f));
         const auto edns_version     = static_cast<std::uint8_t>(ttl.count() >> 16);
         const auto flags            = static_cast<std::uint16_t>(ttl.count());
         const bool dnssec_ok        = flags & 0b1000'0000'0000'0000;

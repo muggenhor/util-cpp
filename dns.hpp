@@ -307,7 +307,7 @@ namespace dns
     ED448               = 16U,
   };
 
-  enum class errc : unsigned
+  enum class rcode : unsigned
   {
     no_error        =  0U,
     format_error    =  1U,
@@ -322,11 +322,11 @@ namespace dns
     notzone         = 10U,
   };
 
-  const std::error_category& dns_category() noexcept;
+  const std::error_category& rcode_category() noexcept;
 
-  inline std::error_code make_error_code(errc e) noexcept
+  inline std::error_code make_error_code(rcode e) noexcept
   {
-    return std::error_code(static_cast<int>(e), dns_category());
+    return std::error_code(static_cast<int>(e), rcode_category());
   }
 
   std::ostream& operator<<(std::ostream& os, msgopcode o);
@@ -428,7 +428,7 @@ namespace dns
   struct opt_rdata
   {
     std::uint16_t udp_payload_size;
-    dns::errc     extended_rcode;
+    dns::rcode    extended_rcode;
     std::uint8_t  edns_version;
     std::uint16_t flags;
     bool          dnssec_ok;
@@ -513,7 +513,7 @@ namespace dns
 namespace std
 {
   template <>
-  struct is_error_code_enum<::dns::errc> : public true_type {};
+  struct is_error_code_enum<::dns::rcode> : public true_type {};
 }
 
 #endif /* INCLUDED_DNS_HPP */
