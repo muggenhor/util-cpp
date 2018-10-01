@@ -88,6 +88,36 @@ namespace monad
   {
     return map(std::forward<F>(f), std::forward<T>(v));
   }
+
+  namespace detail
+  {
+    template <typename T, bool has_constructor>
+    struct do_construct
+    {
+      template <typename... Args>
+      constexpr T operator()(Args&&... args) noexcept(noexcept(T{std::forward<Args>(args)...}))
+      {
+        return T{std::forward<Args>(args)...};
+      }
+    };
+
+    template <typename T>
+    struct do_construct<T, true>
+    {
+      template <typename... Args>
+      constexpr T operator()(Args&&... args) noexcept(noexcept(T(std::forward<Args>(args)...)))
+      {
+        return T(std::forward<Args>(args)...);
+      }
+    };
+  }
+
+  template <typename T, typename... Args>
+  constexpr auto construct(Args&&... args)
+      noexcept(noexcept(map(detail::do_construct<T, std::is_constructible_v<T, Args...>>(), std::forward<Args>(args)...)))
+  {
+    return map(detail::do_construct<T, std::is_constructible_v<T, Args...>>(), std::forward<Args>(args)...);
+  }
 }
 
 #endif /* INCLUDED_MONADS_HPP */
