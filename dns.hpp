@@ -543,7 +543,7 @@ namespace dns
     if (auto msg = parse(gsl::span{std::next(first, 2), next}); msg)
       return std::make_pair(std::move(*msg), next);
     else
-      return unexpected(msg.error());
+      return unexpected(std::move(msg).error());
   }
 }
 

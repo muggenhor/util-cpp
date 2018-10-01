@@ -67,7 +67,7 @@ namespace monad
   {
     if constexpr (is_monad_v<std::decay_t<T>>)
       if (!has_value(v))
-        return ::util::unexpected<std::error_code>(v.error());
+        return ::util::unexpected<std::error_code>(std::forward<T>(v).error());
     return get_error(std::forward<Ts>(vs)...);
   }
 

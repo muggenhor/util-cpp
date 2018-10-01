@@ -432,7 +432,7 @@ namespace dns
           });
 
         if (!label_type)
-          return unexpected(label_type.error());
+          return unexpected(std::move(label_type).error());
         if (!(*label_type & labels_to_accept))
           return unexpected(parser_error::invalid_domain_label_type);
 
@@ -458,7 +458,7 @@ namespace dns
                 }))
               pos = *new_pos;
             else
-              return unexpected(new_pos.error());
+              return unexpected(std::move(new_pos).error());
             break;
           }
           case label_type_mask::normal:
@@ -466,7 +466,7 @@ namespace dns
             if (const auto label = consume_subspan(pos, *label_size))
               labels.emplace_back(reinterpret_cast<const char*>(label->data()), label->size());
             else
-              return unexpected(label.error());
+              return unexpected(std::move(label).error());
             break;
           }
           default:
@@ -488,7 +488,7 @@ namespace dns
     {
       auto r = parse_domain_name(frame, input, labels_to_accept);
       if (!r)
-        return unexpected(r.error());
+        return unexpected(std::move(r).error());
       input = r->second;
       return std::move(r->first);
     }
@@ -561,7 +561,7 @@ namespace dns
     {
       auto name = consume_domain_name(frame, cur);
       if (!name)
-        return unexpected(name.error());
+        return unexpected(std::move(name).error());
       if (cur.size() < 4)
         return unexpected(parser_error::not_enough_data);
 
@@ -590,7 +590,7 @@ namespace dns
 
       auto name = consume_domain_name(frame, cur);
       if (!name)
-        return unexpected(name.error());
+        return unexpected(std::move(name).error());
       if (cur.size() < 10)
         return unexpected(parser_error::not_enough_data);
 
@@ -623,7 +623,7 @@ namespace dns
         if (auto name = consume_domain_name(frame, rdata_frame))
           rdata = std::move(*name);
         else
-          return unexpected(name.error());
+          return unexpected(std::move(name).error());
       }
       else if (type == rr_type::MX)
       {
@@ -633,7 +633,7 @@ namespace dns
         if (auto exchange = parse_domain_name(frame, rdata_frame.subspan(2)); exchange)
           rdata = mx_rdata{preference, std::move(exchange->first)};
         else
-          return unexpected(exchange.error());
+          return unexpected(std::move(exchange).error());
       }
       else if (type == rr_type::SOA)
       {
@@ -784,7 +784,7 @@ namespace dns
         if (auto name = consume_domain_name(frame, rdata_frame, 0|label_type_mask::normal))
           rrsig.signer_name = std::move(*name);
         else
-          return unexpected(name.error());
+          return unexpected(std::move(name).error());
         rrsig.signature = rdata_frame;
         rdata = std::move(rrsig);
       }
@@ -822,7 +822,7 @@ namespace dns
             types)
           nsec.types = std::move(*types);
         else
-          return unexpected(types.error());
+          return unexpected(std::move(types).error());
         rdata = std::move(nsec);
       }
       else if (rdclass == rr_class::IN && type == rr_type::A)
