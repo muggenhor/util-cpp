@@ -479,6 +479,20 @@ namespace dns
       return std::make_pair(std::move(labels), name_frame);
     }
 
+    expected<std::vector<std::string_view>>
+      consume_domain_name(
+            const gsl::span<const std::uint8_t> frame
+          , gsl::span<const std::uint8_t>& input
+          , int labels_to_accept = label_type_mask::normal | label_type_mask::compression_pointer
+        ) noexcept
+    {
+      auto r = parse_domain_name(frame, input, labels_to_accept);
+      if (!r)
+        return unexpected(r.error());
+      input = r->second;
+      return std::move(r->first);
+    }
+
     /// Parses according to RFC 4034 section 4.1.2: The Type Bit Maps Field
     /// \post on success all of input will have been consumed
     expected<std::set<rr_type>>
@@ -545,21 +559,14 @@ namespace dns
     questions.reserve(question_count);
     for (std::uint16_t i = 0; i < question_count; ++i)
     {
-      std::vector<std::string_view> labels;
-      if (auto name = parse_domain_name(frame, cur); name)
-      {
-        labels = std::move(name->first);
-        cur = name->second;
-      }
-      else
-      {
+      auto name = consume_domain_name(frame, cur);
+      if (!name)
         return unexpected(name.error());
-      }
       if (cur.size() < 4)
         return unexpected(parser_error::not_enough_data);
 
       question question{
-          std::move(labels)
+          std::move(*name)
         , rr_type {static_cast<std::uint16_t>(static_cast<std::uint16_t>(cur[0]) << 8U | cur[1])}
         , rr_class{static_cast<std::uint16_t>(static_cast<std::uint16_t>(cur[2]) << 8U | cur[3])}
       };
@@ -581,16 +588,9 @@ namespace dns
                   :                                      additionals
                   ;
 
-      std::vector<std::string_view> labels;
-      if (auto name = parse_domain_name(frame, cur); name)
-      {
-        labels = std::move(name->first);
-        cur = name->second;
-      }
-      else
-      {
+      auto name = consume_domain_name(frame, cur);
+      if (!name)
         return unexpected(name.error());
-      }
       if (cur.size() < 10)
         return unexpected(parser_error::not_enough_data);
 
@@ -620,8 +620,8 @@ namespace dns
        || type == rr_type::MR)
 #pragma GCC diagnostic pop
       {
-        if (auto name = parse_domain_name(frame, rdata_frame); name)
-          rdata = std::move(name->first);
+        if (auto name = consume_domain_name(frame, rdata_frame))
+          rdata = std::move(*name);
         else
           return unexpected(name.error());
       }
@@ -637,11 +637,10 @@ namespace dns
       }
       else if (type == rr_type::SOA)
       {
-        auto authority  = parse_domain_name(frame, rdata_frame);
-        auto hostmaster = authority ? parse_domain_name(frame, authority->second) : authority;
+        auto authority  = consume_domain_name(frame, rdata_frame);
+        auto hostmaster = consume_domain_name(frame, rdata_frame);
         if (!authority || !hostmaster)
-          return unexpected(hostmaster.error());
-        rdata_frame = hostmaster->second;
+          return monad::get_error(authority, hostmaster);
         if (rdata_frame.size() < 20)
           return unexpected(parser_error::not_enough_data);
         const auto serial = static_cast<std::uint32_t>(
@@ -678,7 +677,7 @@ namespace dns
             | static_cast<std::uint32_t>(rdata_frame[18] & 0xffU) <<  8U
             | static_cast<std::uint32_t>(rdata_frame[19] & 0xffU) <<  0U
           ));
-        rdata = soa_rdata{std::move(authority->first), std::move(hostmaster->first), serial, refresh, retry, expiry, negative_ttl};
+        rdata = soa_rdata{std::move(*authority), std::move(*hostmaster), serial, refresh, retry, expiry, negative_ttl};
       }
       else if (type == rr_type::TXT)
       {
@@ -782,25 +781,20 @@ namespace dns
             | static_cast<std::uint16_t>(rdata_frame[17] & 0xffU) <<  0U
             );
         rdata_frame = rdata_frame.subspan(18);
-        if (auto name = parse_domain_name(frame, rdata_frame, 0|label_type_mask::normal); name)
-        {
-          rrsig.signer_name = std::move(name->first);
-          rdata_frame = name->second;
-        }
+        if (auto name = consume_domain_name(frame, rdata_frame, 0|label_type_mask::normal))
+          rrsig.signer_name = std::move(*name);
         else
-        {
           return unexpected(name.error());
-        }
         rrsig.signature = rdata_frame;
         rdata = std::move(rrsig);
       }
       else if (type == rr_type::NSEC)
       {
-        auto next_domain_name  = parse_domain_name(frame, rdata_frame, 0|label_type_mask::normal);
-        auto types             = next_domain_name ? parse_type_bit_map(next_domain_name->second) : expected<std::set<rr_type>>(unexpected(next_domain_name.error()));
+        auto next_domain_name  = consume_domain_name(frame, rdata_frame, 0|label_type_mask::normal);
+        auto types             = parse_type_bit_map(rdata_frame);
         if (!next_domain_name || !types)
-          return unexpected(types.error());
-        rdata = nsec_rdata{std::move(next_domain_name->first), std::move(*types)};
+          return monad::get_error(next_domain_name, types);
+        rdata = nsec_rdata{std::move(*next_domain_name), std::move(*types)};
       }
       else if (type == rr_type::NSEC3)
       {
@@ -879,7 +873,7 @@ namespace dns
       }
 
       rr rr{
-          std::move(labels)
+          std::move(*name)
         , type
         , rdclass
         , ttl
