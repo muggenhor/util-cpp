@@ -382,7 +382,8 @@ namespace dns
     expected<gsl::span<const std::uint8_t>>
     consume_u8varsubspan(gsl::span<const std::uint8_t>& span) noexcept
     {
-      return monad::transform(consume_u8(span), [&] (const auto length) {
+      return consume_u8(span)
+        .map([&] (const auto length) {
           return consume_subspan(span, length);
         });
     }
@@ -390,7 +391,8 @@ namespace dns
     expected<gsl::span<const std::uint8_t>>
     consume_u16varsubspan(gsl::span<const std::uint8_t>& span) noexcept
     {
-      return monad::transform(consume_u16(span), [&] (const auto length) {
+      return consume_u16(span)
+        .map([&] (const auto length) {
           return consume_subspan(span, length);
         });
     }
@@ -443,7 +445,7 @@ namespace dns
         const auto label_size = consume_u8(pos);
         if (label_size && *label_size <= 0)
           break;
-        const auto label_type = monad::transform(label_size, [&](std::uint8_t label_size) {
+        const auto label_type = label_size.map([&](std::uint8_t label_size) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
             switch (static_cast<std::uint8_t>(label_size & 0b1100'0000))
@@ -475,7 +477,7 @@ namespace dns
             if (++pointer_labels_followed > max_follow_count)
               return unexpected(parser_error::too_many_domain_label_pointers);
 
-            const auto offset = monad::transform(consume_u8(pos), [&](std::uint8_t lsb) {
+            const auto offset = consume_u8(pos).map([&](std::uint8_t lsb) {
                 return static_cast<std::uint16_t>((*label_size & 0x3f) << 8 | lsb);
               });
             if (!name_is_compressed)
@@ -483,7 +485,7 @@ namespace dns
               name_frame = pos;
               name_is_compressed = true;
             }
-            if (auto new_pos = monad::transform(offset, [&] (const auto offset) {
+            if (auto new_pos = offset.map([&] (const auto offset) {
                   return subspan(frame, offset);
                 }))
               pos = *new_pos;
@@ -609,7 +611,7 @@ namespace dns
           const auto key_tag     = consume_u16(rdata_frame);
           const auto algorithm   = monad::construct<security_algorithm>(consume_u8(rdata_frame));
           const auto digest_type = monad::construct<digest_algorithm>(consume_u8(rdata_frame));
-          const auto digest_size = monad::transform(digest_type, [] (const auto type) {
+          const auto digest_size = digest_type.map([] (const auto type) {
               switch (type)
               {
                 case digest_algorithm::SHA1:
@@ -623,7 +625,7 @@ namespace dns
               }
               return -1;
             });
-          const auto digest = monad::transform(digest_size,
+          const auto digest = digest_size.map(
               [&](const auto digest_size) -> expected<gsl::span<const std::uint8_t>> {
               if (digest_size >= 0
                && rdata_frame.size() > digest_size)
@@ -663,7 +665,7 @@ namespace dns
         case rr_type::NSEC3:
         {
           const auto hash_algo        = monad::construct<digest_algorithm>(consume_u8(rdata_frame));
-          const auto opt_out          = monad::transform(consume_u8(rdata_frame), [] (const auto flags) -> bool { return flags & 0x1; });
+          const auto opt_out          = consume_u8(rdata_frame).map([] (const auto flags) -> bool { return flags & 0x1; });
           const auto iterations       = consume_u16(rdata_frame);
           const auto salt             = consume_u8varsubspan(rdata_frame);
           const auto next_hashed_name = consume_u8varsubspan(rdata_frame);

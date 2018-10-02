@@ -19,9 +19,14 @@
 #ifndef INCLUDED_MONADS_HPP
 #define INCLUDED_MONADS_HPP
 
-#include "expected.hpp"
 #include <type_traits>
 #include <utility>
+
+namespace util
+{
+  template <typename> class unexpected;
+  template <typename, typename> class expected;
+}
 
 namespace monad
 {

@@ -25,6 +25,7 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include "monads.hpp"
 
 // Based on p0323r7
 
@@ -670,6 +671,30 @@ namespace util
         return std::move(**this);
       else
         return static_cast<T>(std::forward<U>(v));
+    }
+
+    template <typename F>
+    constexpr auto map(F&& f) & noexcept(noexcept(monad::transform(std::declval<expected&>(), std::forward<F>(f))))
+    {
+      return monad::transform(*this, std::forward<F>(f));
+    }
+
+    template <typename F>
+    constexpr auto map(F&& f) const & noexcept(noexcept(monad::transform(std::declval<const expected&>(), std::forward<F>(f))))
+    {
+      return monad::transform(*this, std::forward<F>(f));
+    }
+
+    template <typename F>
+    constexpr auto map(F&& f) && noexcept(noexcept(monad::transform(std::declval<expected&&>(), std::forward<F>(f))))
+    {
+      return monad::transform(std::move(*this), std::forward<F>(f));
+    }
+
+    template <typename F>
+    constexpr auto map(F&& f) const && noexcept(noexcept(monad::transform(std::declval<const expected&&>(), std::forward<F>(f))))
+    {
+      return monad::transform(std::move(*this), std::forward<F>(f));
     }
 
     friend void swap(expected& lhs, expected& rhs) noexcept(noexcept(lhs.swap(rhs)))
