@@ -735,78 +735,78 @@ namespace dns
 
     const auto txid  = consume_u16(cur);
     const auto flags = consume_u16(cur);
-    // RFC 1035 4.1.1
-    const auto is_response             = monad::transform(flags, [] (const auto flags) -> bool { return (flags >> 15) & 0x1; });
-    const auto opcode                  = monad::transform(flags, [] (const auto flags) { return static_cast<msgopcode>((flags >> 11) & 0xf); });
-    const auto is_authoritative_answer = monad::transform(flags, [] (const auto flags) -> bool { return (flags >> 10) & 0x1; });
-    const auto is_truncated            = monad::transform(flags, [] (const auto flags) -> bool { return (flags >>  9) & 0x1; });
-    const auto is_recursion_desired    = monad::transform(flags, [] (const auto flags) -> bool { return (flags >>  8) & 0x1; });
-    const auto is_recursion_available  = monad::transform(flags, [] (const auto flags) -> bool { return (flags >>  7) & 0x1; });
-    auto       rcode                   = monad::transform(flags, [] (const auto flags) { return static_cast<dns::rcode>((flags >> 0) & 0xf); });
-
-    // RFC 2535 6.1
-    const auto authentic_data          = monad::transform(flags, [] (const auto flags) -> bool { return (flags >>  5) & 0x1; });
-    const auto checking_disabled       = monad::transform(flags, [] (const auto flags) -> bool { return (flags >>  4) & 0x1; });
 
     const auto question_count   = consume_u16(cur);
     const auto answer_count     = consume_u16(cur);
     const auto authority_count  = consume_u16(cur);
     const auto additional_count = consume_u16(cur);
 
-    auto questions = monad::transform(question_count, [&](const auto question_count) -> expected<std::vector<question>> {
-        expected<std::vector<question>> questions(std::in_place);
-        questions->reserve(question_count);
-        for (std::uint16_t i = 0; i < question_count; ++i)
-        {
-          auto name    = consume_domain_name(frame, cur);
-          auto rdtype  = monad::construct<rr_type>(consume_u16(cur));
-          auto rrclass = monad::construct<rr_class>(consume_u16(cur));
-          if (auto q = monad::construct<question>(std::move(name), rdtype, rrclass))
-            questions->push_back(std::move(*q));
-          else
-            return unexpected(std::move(q).error());
-        }
-        return questions;
-      });
+    if (auto err = monad::get_error(
+          txid, flags, question_count, answer_count, authority_count, additional_count))
+      return unexpected(std::move(err));
 
-    const auto process_rrs = [&](const auto rr_count) -> expected<std::vector<rr>> {
-        expected<std::vector<rr>> rrset(std::in_place);
-        rrset->reserve(rr_count);
-        for (std::size_t i = 0; i < rr_count; ++i)
-        {
-          if (auto rr = monad::map(consume_rr, rcode, frame, cur))
-            rrset->push_back(std::move(*rr));
-          else
-            return unexpected(std::move(rr).error());
-        }
-        return rrset;
-      };
+    // RFC 1035 4.1.1
+    const bool is_response             = (*flags >> 15) & 0x1;
+    const auto opcode                  = static_cast<msgopcode>((*flags >> 11) & 0xf);
+    const bool is_authoritative_answer = (*flags >> 10) & 0x1;
+    const bool is_truncated            = (*flags >>  9) & 0x1;
+    const bool is_recursion_desired    = (*flags >>  8) & 0x1;
+    const bool is_recursion_available  = (*flags >>  7) & 0x1;
+    auto       rcode                   = static_cast<dns::rcode>((*flags >> 0) & 0xf);
 
-    auto answers     = monad::map(process_rrs, answer_count);
-    auto authorities = monad::map(process_rrs, authority_count);
-    auto additionals = monad::map(process_rrs, additional_count);
+    // RFC 2535 6.1
+    const bool authentic_data          = (*flags >>  5) & 0x1;
+    const bool checking_disabled       = (*flags >>  4) & 0x1;
 
-    auto edns = monad::transform(additionals, [&rcode] (const auto& additionals) -> expected<std::optional<opt_rdata>> {
-        std::optional<opt_rdata> edns;
-        for (const auto& rr : additionals)
-        {
-          if (const auto* const opt = std::get_if<opt_rdata>(&rr.rdata))
-          {
-            if (edns)
-              return unexpected(parser_error::multiple_opt_records);
+    std::vector<question> questions;
+    questions.reserve(*question_count);
+    for (std::uint16_t i = 0; i < *question_count; ++i)
+    {
+      auto name    = consume_domain_name(frame, cur);
+      auto rdtype  = monad::construct<rr_type>(consume_u16(cur));
+      auto rrclass = monad::construct<rr_class>(consume_u16(cur));
+      if (auto q = monad::construct<question>(std::move(name), rdtype, rrclass))
+        questions.push_back(std::move(*q));
+      else
+        return unexpected(std::move(q).error());
+    }
 
-            edns = *opt;
-            rcode = edns->extended_rcode;
-          }
-        }
-        return edns;
-      });
+    std::vector<rr> answers;
+    answers.reserve(*answer_count);
+    std::vector<rr> authorities;
+    authorities.reserve(*authority_count);
+    std::vector<rr> additionals;
+    additionals.reserve(*additional_count);
 
-    return monad::transform(is_response, [&] (const auto is_response) -> expected<message> {
-        if (is_response)
-          return monad::construct<reply>(txid, rcode, is_authoritative_answer, is_truncated, is_recursion_available, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals));
-        else
-          return monad::construct<query>(txid, opcode, is_recursion_desired, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals));
-      });
+    for (std::size_t i = 0; i < static_cast<std::uint16_t>(*answer_count + *authority_count + *additional_count); ++i)
+    {
+      auto& rrset = i < *answer_count                    ? answers
+                  : i < *answer_count + *authority_count ? authorities
+                  :                                        additionals
+                  ;
+
+      if (auto rr = monad::map(consume_rr, rcode, frame, cur))
+        rrset.push_back(std::move(*rr));
+      else
+        return unexpected(std::move(rr).error());
+    }
+
+    std::optional<opt_rdata> edns;
+    for (const auto& rr : additionals)
+    {
+      if (const auto* const opt = std::get_if<opt_rdata>(&rr.rdata))
+      {
+        if (edns)
+          return unexpected(parser_error::multiple_opt_records);
+
+        edns = *opt;
+        rcode = edns->extended_rcode;
+      }
+    }
+
+    if (is_response)
+      return reply{*txid, rcode, is_authoritative_answer, is_truncated, is_recursion_available, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals)};
+    else
+      return query{*txid, opcode, is_recursion_desired, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals)};
   }
 }
