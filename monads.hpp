@@ -54,7 +54,7 @@ namespace monad
   }
 
   // constexpr: not possible (now) because std::error_code isn't literal
-  auto get_error()
+  inline auto get_error()
   {
     return std::error_code();
   }
