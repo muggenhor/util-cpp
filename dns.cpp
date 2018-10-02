@@ -535,9 +535,8 @@ namespace dns
         const auto bitmap = consume_u8varsubspan(input);
         if (!window || !bitmap || bitmap->empty() || bitmap->size() > 32)
         {
-          return unexpected(monad::map([](const auto&...) {
-              return unexpected(parser_error::invalid_bitmap_window_size);
-            }, window, bitmap).error());
+          return unexpected(monad::get_error(
+                window, bitmap, parser_error::invalid_bitmap_window_size));
         }
 
         unsigned idx = 0U;
