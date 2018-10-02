@@ -696,8 +696,8 @@ namespace dns
           {
             const auto code  = monad::construct<option_code>(consume_u16(rdata_frame));
             const auto value = consume_u16varsubspan(rdata_frame);
-            if (!code || !value)
-              return monad::get_error(code, value);
+            if (auto err = monad::get_error(code, value))
+              return unexpected(std::move(err));
             options.emplace(*code, *value);
           }
           return opt_rdata{

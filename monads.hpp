@@ -20,7 +20,6 @@
 #define INCLUDED_MONADS_HPP
 
 #include "expected.hpp"
-#include <cassert>
 #include <type_traits>
 #include <utility>
 
@@ -57,9 +56,7 @@ namespace monad
   // constexpr: not possible (now) because std::error_code isn't literal
   auto get_error()
   {
-    assert(!"programmer logic error: this function should never be called");
-    return ::util::unexpected<std::error_code>(
-        make_error_code(std::errc::argument_out_of_domain));
+    return std::error_code();
   }
 
   template <typename T, typename... Ts>
@@ -67,7 +64,7 @@ namespace monad
   {
     if constexpr (is_monad_v<std::decay_t<T>>)
       if (!has_value(v))
-        return ::util::unexpected<std::error_code>(std::forward<T>(v).error());
+        return std::forward<T>(v).error();
     return get_error(std::forward<Ts>(vs)...);
   }
 
@@ -79,7 +76,7 @@ namespace monad
     if ((has_value(vs) && ...))
       return std::forward<F>(f)(get_value(std::forward<Ts>(vs))...);
     else
-      return get_error(std::forward<Ts>(vs)...);
+      return ::util::unexpected(get_error(std::forward<Ts>(vs)...));
   }
 
   template <typename T, typename F>
