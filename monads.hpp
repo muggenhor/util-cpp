@@ -59,13 +59,13 @@ namespace monad
   }
 
   // constexpr: not possible (now) because std::error_code isn't literal
-  inline auto get_error()
+  inline auto get_error() noexcept
   {
     return std::error_code();
   }
 
   template <typename T, typename... Ts>
-  constexpr auto get_error(T&& v, Ts&&... vs)
+  constexpr std::error_code get_error(T&& v, Ts&&... vs) noexcept
   {
     if constexpr (is_monad_v<std::decay_t<T>>)
       if (!has_value(v))
