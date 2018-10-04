@@ -249,7 +249,7 @@ namespace util
       >
     constexpr expected(const expected<U, G>& rhs) noexcept(
           std::is_nothrow_constructible_v<T, const U&>
-       && std::is_nothrow_constructible_v<T, const G&>)
+       && std::is_nothrow_constructible_v<E, const G&>)
       : content_(rhs ? storage_type(std::in_place_type<value_type>, *rhs) : storage_type(std::in_place_type<unexpected_type>, rhs.error()))
     {
     }
@@ -280,7 +280,7 @@ namespace util
       >
     explicit constexpr expected(const expected<U, G>& rhs) noexcept(
           std::is_nothrow_constructible_v<T, const U&>
-       && std::is_nothrow_constructible_v<T, const G&>)
+       && std::is_nothrow_constructible_v<E, const G&>)
       : content_(rhs ? storage_type(std::in_place_type<value_type>, *rhs) : storage_type(std::in_place_type<unexpected_type>, rhs.error()))
     {
     }
@@ -311,7 +311,7 @@ namespace util
       >
     constexpr expected(expected<U, G>&& rhs) noexcept(
           std::is_nothrow_constructible_v<T, U&&>
-       && std::is_nothrow_constructible_v<T, G&&>)
+       && std::is_nothrow_constructible_v<E, G&&>)
       : content_(rhs ? storage_type(std::in_place_type<value_type>, std::move(*rhs)) : storage_type(std::in_place_type<unexpected_type>, std::move(rhs.error())))
     {
     }
@@ -342,7 +342,7 @@ namespace util
       >
     explicit constexpr expected(expected<U, G>&& rhs) noexcept(
           std::is_nothrow_constructible_v<T, U&&>
-       && std::is_nothrow_constructible_v<T, G&&>)
+       && std::is_nothrow_constructible_v<E, G&&>)
       : content_(rhs ? storage_type(std::in_place_type<value_type>, std::move(*rhs)) : storage_type(std::in_place_type<unexpected_type>, std::move(rhs.error())))
     {
     }
