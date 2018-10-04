@@ -91,6 +91,22 @@ namespace monad
     return map(std::forward<F>(f), std::forward<T>(v));
   }
 
+  template <typename C, typename F>
+  constexpr wrap_monad<C> collect(const std::size_t count, F&& f)
+  {
+    wrap_monad<C> r;
+    get_value(r).reserve(count);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+      if (auto v = std::invoke(std::forward<F>(f));
+          has_value(v))
+        get_value(r).insert(get_value(r).end(), get_value(std::move(v)));
+      else
+        return ::util::unexpected(get_error(std::move(v)));
+    }
+    return r;
+  }
+
   namespace detail
   {
     template <typename T, bool has_constructor>

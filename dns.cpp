@@ -759,55 +759,41 @@ namespace dns
     const bool authentic_data          = (*flags >>  5) & 0x1;
     const bool checking_disabled       = (*flags >>  4) & 0x1;
 
-    std::vector<question> questions;
-    questions.reserve(*question_count);
-    for (std::uint16_t i = 0; i < *question_count; ++i)
-    {
-      auto name    = consume_domain_name(frame, cur);
-      auto rdtype  = monad::construct<rr_type>(consume_u16(cur));
-      auto rrclass = monad::construct<rr_class>(consume_u16(cur));
-      if (auto q = monad::construct<question>(std::move(name), rdtype, rrclass))
-        questions.push_back(std::move(*q));
-      else
-        return unexpected(std::move(q).error());
-    }
+    auto questions = monad::collect<std::vector<question>>(*question_count,
+        [frame, &cur]() {
+        auto name    = consume_domain_name(frame, cur);
+        auto rdtype  = monad::construct<rr_type>(consume_u16(cur));
+        auto rrclass = monad::construct<rr_class>(consume_u16(cur));
+        return monad::construct<question>(std::move(name), rdtype, rrclass);
+      });
 
-    std::vector<rr> answers;
-    answers.reserve(*answer_count);
-    std::vector<rr> authorities;
-    authorities.reserve(*authority_count);
-    std::vector<rr> additionals;
-    additionals.reserve(*additional_count);
+    auto answers = monad::collect<std::vector<rr>>(*answer_count,
+        [rcode, frame, &cur] { return consume_rr(rcode, frame, cur); });
+    auto authorities = monad::collect<std::vector<rr>>(*authority_count,
+        [rcode, frame, &cur] { return consume_rr(rcode, frame, cur); });
+    auto additionals = monad::collect<std::vector<rr>>(*additional_count,
+        [rcode, frame, &cur] { return consume_rr(rcode, frame, cur); });
 
-    for (std::size_t i = 0; i < static_cast<std::uint16_t>(*answer_count + *authority_count + *additional_count); ++i)
-    {
-      auto& rrset = i < *answer_count                    ? answers
-                  : i < *answer_count + *authority_count ? authorities
-                  :                                        additionals
-                  ;
+    auto edns = monad::transform(additionals,
+      [&rcode](const auto& additionals) -> expected<std::optional<opt_rdata>> {
+        std::optional<opt_rdata> edns;
+        for (const auto& rr : additionals)
+        {
+          if (const auto* const opt = std::get_if<opt_rdata>(&rr.rdata))
+          {
+            if (edns)
+              return unexpected(parser_error::multiple_opt_records);
 
-      if (auto rr = monad::map(consume_rr, rcode, frame, cur))
-        rrset.push_back(std::move(*rr));
-      else
-        return unexpected(std::move(rr).error());
-    }
-
-    std::optional<opt_rdata> edns;
-    for (const auto& rr : additionals)
-    {
-      if (const auto* const opt = std::get_if<opt_rdata>(&rr.rdata))
-      {
-        if (edns)
-          return unexpected(parser_error::multiple_opt_records);
-
-        edns = *opt;
-        rcode = edns->extended_rcode;
-      }
-    }
+            edns = *opt;
+            rcode = edns->extended_rcode;
+          }
+        }
+        return edns;
+      });
 
     if (is_response)
-      return reply{*txid, rcode, is_authoritative_answer, is_truncated, is_recursion_available, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals)};
+      return monad::construct<reply>(*txid, rcode, is_authoritative_answer, is_truncated, is_recursion_available, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals));
     else
-      return query{*txid, opcode, is_recursion_desired, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals)};
+      return monad::construct<query>(*txid, opcode, is_recursion_desired, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals));
   }
 }
