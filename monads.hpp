@@ -81,7 +81,15 @@ namespace monad
   {
     if ((!has_value(vs) || ...))
       return ::util::unexpected(get_error(std::forward<Ts>(vs)...));
-    return std::invoke(std::forward<F>(f), get_value(std::forward<Ts>(vs))...);
+    if constexpr (std::is_void_v<decltype(std::invoke(std::forward<F>(f), get_value(std::forward<Ts>(vs))...))>)
+    {
+      std::invoke(std::forward<F>(f), get_value(std::forward<Ts>(vs))...);
+      return {};
+    }
+    else
+    {
+      return std::invoke(std::forward<F>(f), get_value(std::forward<Ts>(vs))...);
+    }
   }
 
   template <typename T, typename F>
