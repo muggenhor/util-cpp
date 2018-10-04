@@ -106,11 +106,12 @@ namespace monad
     get_value(r).reserve(count);
     for (std::size_t i = 0; i < count; ++i)
     {
-      if (auto v = std::invoke(std::forward<F>(f));
-          has_value(v))
-        get_value(r).insert(get_value(r).end(), get_value(std::move(v)));
-      else
-        return ::util::unexpected(get_error(std::move(v)));
+      if (auto e = transform(std::invoke(std::forward<F>(f)),
+            [&c = get_value(r)] (auto&& v) {
+              c.insert(c.end(), std::forward<decltype(v)>(v));
+            });
+          !has_value(e))
+        return ::util::unexpected(get_error(std::move(e)));
     }
     return r;
   }
