@@ -19,6 +19,7 @@
 #ifndef INCLUDED_MONADS_HPP
 #define INCLUDED_MONADS_HPP
 
+#include <functional>
 #include <type_traits>
 #include <utility>
 
@@ -75,13 +76,12 @@ namespace monad
 
   template <typename F, typename... Ts>
   constexpr auto map(F&& f, Ts&&... vs)
-      noexcept(noexcept(std::forward<F>(f)(get_value(std::forward<Ts>(vs))...)))
-   -> wrap_monad<decltype(std::forward<F>(f)(get_value(std::forward<Ts>(vs))...))>
+      noexcept(noexcept(std::invoke(std::forward<F>(f), get_value(std::forward<Ts>(vs))...)))
+   -> wrap_monad<decltype(std::invoke(std::forward<F>(f), get_value(std::forward<Ts>(vs))...))>
   {
-    if ((has_value(vs) && ...))
-      return std::forward<F>(f)(get_value(std::forward<Ts>(vs))...);
-    else
+    if ((!has_value(vs) || ...))
       return ::util::unexpected(get_error(std::forward<Ts>(vs)...));
+    return std::invoke(std::forward<F>(f), get_value(std::forward<Ts>(vs))...);
   }
 
   template <typename T, typename F>
