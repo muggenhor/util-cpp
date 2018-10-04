@@ -713,7 +713,10 @@ namespace util
       return false;
     if (!lhs.has_value())
       return lhs.error() == rhs.error();
-    return *lhs == *rhs;
+    if constexpr (std::is_void_v<T1> && std::is_void_v<T2>)
+      return true;
+    else
+      return *lhs == *rhs;
   }
 
   template <typename T1, typename E1, typename T2, typename E2>
@@ -723,28 +726,35 @@ namespace util
       return true;
     if (!lhs.has_value())
       return lhs.error() != rhs.error();
-    return *lhs != *rhs;
+    if constexpr (std::is_void_v<T1> && std::is_void_v<T2>)
+      return false;
+    else
+      return *lhs != *rhs;
   }
 
-  template <typename T1, typename E1, typename T2>
+  template <typename T1, typename E1, typename T2
+    , std::enable_if_t<std::is_void_v<T1> && std::is_void_v<T2>, bool> = false>
   constexpr bool operator==(const expected<T1, E1>& lhs, const T2& rhs)
   {
     return lhs.has_value() && *lhs == rhs;
   }
 
-  template <typename T1, typename E1, typename T2>
+  template <typename T1, typename E1, typename T2
+    , std::enable_if_t<std::is_void_v<T1> && std::is_void_v<T2>, bool> = false>
   constexpr bool operator==(const T2& lhs, const expected<T1, E1>& rhs)
   {
     return rhs == lhs;
   }
 
-  template <typename T1, typename E1, typename T2>
+  template <typename T1, typename E1, typename T2
+    , std::enable_if_t<std::is_void_v<T1> && std::is_void_v<T2>, bool> = false>
   constexpr bool operator!=(const expected<T1, E1>& lhs, const T2& rhs)
   {
     return !(lhs == rhs);
   }
 
-  template <typename T1, typename E1, typename T2>
+  template <typename T1, typename E1, typename T2
+    , std::enable_if_t<std::is_void_v<T1> && std::is_void_v<T2>, bool> = false>
   constexpr bool operator!=(const T2& lhs, const expected<T1, E1>& rhs)
   {
     return !(lhs == rhs);
