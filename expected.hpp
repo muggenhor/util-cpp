@@ -711,21 +711,19 @@ namespace util
   {
     if (lhs.has_value() != rhs.has_value())
       return false;
-    return lhs.has_value()
-      ? *lhs == *rhs
-      : lhs.error() == rhs.error()
-      ;
+    if (!lhs.has_value())
+      return lhs.error() == rhs.error();
+    return *lhs == *rhs;
   }
 
   template <typename T1, typename E1, typename T2, typename E2>
   constexpr bool operator!=(const expected<T1, E1>& lhs, const expected<T2, E2>& rhs)
   {
     if (lhs.has_value() != rhs.has_value())
-      return false;
-    return lhs.has_value()
-      ? *lhs != *rhs
-      : lhs.error() != rhs.error()
-      ;
+      return true;
+    if (!lhs.has_value())
+      return lhs.error() != rhs.error();
+    return *lhs != *rhs;
   }
 
   template <typename T1, typename E1, typename T2>
