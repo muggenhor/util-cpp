@@ -706,6 +706,266 @@ namespace util
     storage_type content_;
   };
 
+  template <typename E>
+  class expected<void, E>
+  {
+  public:
+    using value_type = void;
+    using error_type = E;
+    using unexpected_type = unexpected<E>;
+
+    template <typename U>
+    using rebind = expected<U, error_type>;
+
+  private:
+    using storage_type = std::variant<std::monostate, unexpected_type>;
+  public:
+
+    constexpr expected() noexcept
+      : content_(std::in_place_type<std::monostate>)
+    {
+    }
+
+    template<typename U, typename G
+      , std::enable_if_t<
+              std::is_constructible_v<E, const G&>
+           && !std::is_constructible_v<unexpected<E>, expected<U, G>&>
+           && !std::is_constructible_v<unexpected<E>, expected<U, G>&&>
+           && !std::is_constructible_v<unexpected<E>, const expected<U, G>&>
+           && !std::is_constructible_v<unexpected<E>, const expected<U, G>&&>
+           && !std::is_convertible_v<expected<U, G>&, unexpected<E>>
+           && !std::is_convertible_v<expected<U, G>&&, unexpected<E>>
+           && !std::is_convertible_v<const expected<U, G>&, unexpected<E>>
+           && !std::is_convertible_v<const expected<U, G>&&, unexpected<E>>
+           // non-explicit-ness propagation
+           && std::is_convertible_v<const G&, E>
+          , bool> = false
+      >
+    constexpr expected(const expected<U, G>& rhs) noexcept(
+          std::is_nothrow_constructible_v<E, const G&>)
+      : content_(rhs
+          ? storage_type(std::in_place_type<std::monostate>, *rhs)
+          : storage_type(std::in_place_type<unexpected_type>, rhs.error())
+          )
+    {
+    }
+
+    template<typename U, typename G
+      , std::enable_if_t<
+              std::is_constructible_v<E, const G&>
+           && !std::is_constructible_v<unexpected<E>, expected<U, G>&>
+           && !std::is_constructible_v<unexpected<E>, expected<U, G>&&>
+           && !std::is_constructible_v<unexpected<E>, const expected<U, G>&>
+           && !std::is_constructible_v<unexpected<E>, const expected<U, G>&&>
+           && !std::is_convertible_v<expected<U, G>&, unexpected<E>>
+           && !std::is_convertible_v<expected<U, G>&&, unexpected<E>>
+           && !std::is_convertible_v<const expected<U, G>&, unexpected<E>>
+           && !std::is_convertible_v<const expected<U, G>&&, unexpected<E>>
+           // explicit-ness propagation
+           && !std::is_convertible_v<const G&, E>
+          , bool> = false
+      >
+    explicit constexpr expected(const expected<U, G>& rhs) noexcept(
+          std::is_nothrow_constructible_v<E, const G&>)
+      : content_(rhs
+          ? storage_type(std::in_place_type<std::monostate>, *rhs)
+          : storage_type(std::in_place_type<unexpected_type>, rhs.error())
+          )
+    {
+    }
+
+    template<typename U, typename G
+      , std::enable_if_t<
+              std::is_constructible_v<E, G&&>
+           && !std::is_constructible_v<unexpected<E>, expected<U, G>&>
+           && !std::is_constructible_v<unexpected<E>, expected<U, G>&&>
+           && !std::is_constructible_v<unexpected<E>, const expected<U, G>&>
+           && !std::is_constructible_v<unexpected<E>, const expected<U, G>&&>
+           && !std::is_convertible_v<expected<U, G>&, unexpected<E>>
+           && !std::is_convertible_v<expected<U, G>&&, unexpected<E>>
+           && !std::is_convertible_v<const expected<U, G>&, unexpected<E>>
+           && !std::is_convertible_v<const expected<U, G>&&, unexpected<E>>
+           // non-explicit-ness propagation
+           && std::is_convertible_v<G&&, E>
+          , bool> = false
+      >
+    constexpr expected(expected<U, G>&& rhs) noexcept(
+          std::is_nothrow_constructible_v<E, G&&>)
+      : content_(rhs
+          ? storage_type(std::in_place_type<std::monostate>, std::move(*rhs))
+          : storage_type(std::in_place_type<unexpected_type>, std::move(rhs.error()))
+          )
+    {
+    }
+
+    template<typename U, typename G
+      , std::enable_if_t<
+              std::is_constructible_v<E, G&&>
+           && !std::is_constructible_v<unexpected<E>, expected<U, G>&>
+           && !std::is_constructible_v<unexpected<E>, expected<U, G>&&>
+           && !std::is_constructible_v<unexpected<E>, const expected<U, G>&>
+           && !std::is_constructible_v<unexpected<E>, const expected<U, G>&&>
+           && !std::is_convertible_v<expected<U, G>&, unexpected<E>>
+           && !std::is_convertible_v<expected<U, G>&&, unexpected<E>>
+           && !std::is_convertible_v<const expected<U, G>&, unexpected<E>>
+           && !std::is_convertible_v<const expected<U, G>&&, unexpected<E>>
+           // explicit-ness propagation
+           && !std::is_convertible_v<G&&, E>
+          , bool> = false
+      >
+    explicit constexpr expected(expected<U, G>&& rhs) noexcept(
+          std::is_nothrow_constructible_v<E, G&&>)
+      : content_(rhs
+          ? storage_type(std::in_place_type<std::monostate>, std::move(*rhs))
+          : storage_type(std::in_place_type<unexpected_type>, std::move(rhs.error()))
+          )
+    {
+    }
+
+    template <typename G = E>
+    constexpr expected(const unexpected<G>& e) noexcept(noexcept(storage_type(std::in_place_type<unexpected_type>, e)))
+      : content_(std::in_place_type<unexpected_type>, e)
+    {
+    }
+
+    template <typename G = E>
+    constexpr expected(unexpected<G>&& e) noexcept(noexcept(storage_type(std::in_place_type<unexpected_type>, std::move(e.value()))))
+      : content_(std::in_place_type<unexpected_type>, std::move(e.value()))
+    {
+    }
+
+    constexpr explicit expected(std::in_place_t) noexcept
+      : content_(std::in_place_type<std::monostate>)
+    {
+    }
+
+    template <typename... Args,
+      typename = std::enable_if_t<std::is_constructible_v<E, Args...>>>
+    constexpr explicit expected(unexpect_t, Args&&... args)
+      noexcept(noexcept(storage_type(std::in_place_type<unexpected_type>, std::in_place, std::forward<Args>(args)...)))
+      : content_(std::in_place_type<unexpected_type>, std::in_place, std::forward<Args>(args)...)
+    {
+    }
+
+    template <typename U, typename... Args,
+      typename = std::enable_if_t<std::is_constructible_v<E, std::initializer_list<U>&, Args...>>>
+    constexpr explicit expected(unexpect_t, std::initializer_list<U> il, Args&&... args)
+      noexcept(noexcept(storage_type(std::in_place_type<unexpected_type>, std::in_place, il, std::forward<Args>(args)...)))
+      : content_(std::in_place_type<unexpected_type>, std::in_place, il, std::forward<Args>(args)...)
+    {
+    }
+
+    template <typename G = E
+      , std::enable_if_t<
+          std::is_nothrow_copy_constructible_v<E>
+       && std::is_copy_assignable_v<E>
+        , bool> = false
+      >
+    expected& operator=(const unexpected<G>& e)
+    {
+      content_.template emplace<unexpected_type>(e.value());
+      return *this;
+    }
+
+    template <typename G = E
+      , std::enable_if_t<
+          std::is_nothrow_move_constructible_v<E>
+       && std::is_move_assignable_v<E>
+        , bool> = false
+      >
+    expected& operator=(unexpected<G>&& e)
+    {
+      content_.template emplace<unexpected_type>(std::move(e.value()));
+      return *this;
+    }
+
+    void emplace() noexcept
+    {
+      if (!has_value())
+      {
+        content_.template emplace<std::monostate>();
+      }
+    }
+
+    void swap(expected& other) noexcept(std::is_nothrow_swappable_v<storage_type>)
+    {
+      using std::swap;
+      swap(this->content_, other.content_);
+    }
+
+    constexpr explicit operator bool() const noexcept
+    {
+      return has_value();
+    }
+
+    constexpr bool has_value() const noexcept
+    {
+      return std::holds_alternative<std::monostate>(content_);
+    }
+
+    constexpr void value() const
+    {
+      if (!has_value())
+        throw std::logic_error();
+    }
+
+    constexpr const E& error() const&
+    {
+      assert(!has_value());
+      return std::get<unexpected_type>(content_).value();
+    }
+
+    constexpr E& error() &
+    {
+      assert(!has_value());
+      return std::get<unexpected_type>(content_).value();
+    }
+
+    constexpr const E&& error() const&&
+    {
+      assert(!has_value());
+      return std::move(std::get<unexpected_type>(content_).value());
+    }
+
+    constexpr E&& error() &&
+    {
+      assert(!has_value());
+      return std::move(std::get<unexpected_type>(content_).value());
+    }
+
+    template <typename F>
+    constexpr auto map(F&& f) & noexcept(noexcept(monad::transform(std::declval<expected&>(), std::forward<F>(f))))
+    {
+      return monad::transform(*this, std::forward<F>(f));
+    }
+
+    template <typename F>
+    constexpr auto map(F&& f) const & noexcept(noexcept(monad::transform(std::declval<const expected&>(), std::forward<F>(f))))
+    {
+      return monad::transform(*this, std::forward<F>(f));
+    }
+
+    template <typename F>
+    constexpr auto map(F&& f) && noexcept(noexcept(monad::transform(std::declval<expected&&>(), std::forward<F>(f))))
+    {
+      return monad::transform(std::move(*this), std::forward<F>(f));
+    }
+
+    template <typename F>
+    constexpr auto map(F&& f) const && noexcept(noexcept(monad::transform(std::declval<const expected&&>(), std::forward<F>(f))))
+    {
+      return monad::transform(std::move(*this), std::forward<F>(f));
+    }
+
+    friend void swap(expected& lhs, expected& rhs) noexcept(noexcept(lhs.swap(rhs)))
+    {
+      lhs.swap(rhs);
+    }
+
+  private:
+    storage_type content_;
+  };
+
   template <typename T1, typename E1, typename T2, typename E2>
   constexpr bool operator==(const expected<T1, E1>& lhs, const expected<T2, E2>& rhs)
   {
