@@ -170,7 +170,7 @@ namespace util
     void swap(unexpected& other) noexcept(std::is_nothrow_swappable_v<E>)
     {
       using std::swap;
-      swap(*this, other);
+      swap(this->val, other.val);
     }
 
     template <typename E2>
@@ -556,7 +556,7 @@ namespace util
     void swap(expected& other) noexcept(std::is_nothrow_swappable_v<storage_type>)
     {
       using std::swap;
-      swap(*this, other);
+      swap(this->content_, other.content_);
     }
 
     constexpr const value_type* operator->() const
