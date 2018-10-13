@@ -531,7 +531,7 @@ namespace dns
       parse_type_bit_map(gsl::span<const std::uint8_t> input) noexcept
     {
       expected<std::set<rr_type>> types(std::in_place);
-      do
+      while (types && !input.empty())
       {
         const auto window = consume_u8(input);
         const auto bitmap = consume_u8varsubspan(input);
@@ -553,7 +553,7 @@ namespace dns
             }
           }
         }
-      } while (types && !input.empty());
+      }
       return types;
     }
 
