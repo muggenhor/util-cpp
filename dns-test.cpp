@@ -20,8 +20,9 @@ std::pair<std::optional<std::uint16_t>, InputIterator> read_u16(InputIterator fi
 }
 
 template <typename InputIterator, typename EndIterator>
-void process_pkts(InputIterator first, const EndIterator last)
+std::error_code process_pkts(InputIterator first, const EndIterator last)
 {
+  std::error_code err;
   std::vector<std::uint8_t> frame;
   while (first != last)
   {
@@ -36,7 +37,7 @@ void process_pkts(InputIterator first, const EndIterator last)
     if (!length)
     {
       cout << "\x1B[31m" "couldn't read length: too little data" "\x1B[39m\n";
-      break;
+      return make_error_code(dns::parser_error::not_enough_data);
     }
     else
     {
@@ -46,7 +47,7 @@ void process_pkts(InputIterator first, const EndIterator last)
         if (first == last)
         {
           cout << "\x1B[31m" "less octets available than specified frame length" "\x1B[39m: " << frame.size() << '\n';
-          return;
+          return make_error_code(dns::parser_error::not_enough_data);
         }
         frame.push_back(*first++);
       }
@@ -291,22 +292,30 @@ void process_pkts(InputIterator first, const EndIterator last)
     {
       cout << "\x1B[31m" "invalid DNS packet" "\x1B[39m: "
         << msg.error().category().name() << ':' << msg.error().message() << '\n';
+      err = msg.error();
     }
   }
+
+  return err;
 }
 
 int main(const int argc, const char** const argv)
 {
+  std::error_code err;
   if (argc < 2)
   {
-    process_pkts(std::istreambuf_iterator(std::cin), std::istreambuf_iterator<char>());
+    err = process_pkts(std::istreambuf_iterator(std::cin), std::istreambuf_iterator<char>());
   }
   else
   {
     for (int i = 1; i < argc; ++i)
     {
       std::ifstream input{argv[i], std::ios_base::in | std::ios_base::binary};
-      process_pkts(std::istreambuf_iterator(input), std::istreambuf_iterator<char>());
+      auto n = process_pkts(std::istreambuf_iterator(input), std::istreambuf_iterator<char>());
+      if (n)
+        err = n;
     }
   }
+
+  return err ? 1 : 0;
 }
