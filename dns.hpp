@@ -479,27 +479,15 @@ namespace dns
       >                                   rdata;
   };
 
-  struct query
+  struct message
   {
     std::uint16_t txid;
+    bool is_response;
     msgopcode opcode;
-    bool is_recursion_desired;
-    bool authentic_data;
-    bool checking_disabled;
-    std::optional<opt_rdata> edns;
-
-    std::vector<question> questions;
-    std::vector<rr>       answers;
-    std::vector<rr>       authority;
-    std::vector<rr>       additional;
-  };
-
-  struct reply
-  {
-    std::uint16_t txid;
     std::error_code rcode;
     bool is_authoritative_answer;
     bool is_truncated;
+    bool is_recursion_desired;
     bool is_recursion_available;
     bool authentic_data;
     bool checking_disabled;
@@ -510,8 +498,6 @@ namespace dns
     std::vector<rr>       authority;
     std::vector<rr>       additional;
   };
-
-  using message = std::variant<query, reply>;
 }
 
 namespace std

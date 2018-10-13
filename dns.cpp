@@ -791,9 +791,22 @@ namespace dns
         return edns;
       });
 
-    if (is_response)
-      return monad::construct<reply>(*txid, rcode, is_authoritative_answer, is_truncated, is_recursion_available, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals));
-    else
-      return monad::construct<query>(*txid, opcode, is_recursion_desired, authentic_data, checking_disabled, std::move(edns), std::move(questions), std::move(answers), std::move(authorities), std::move(additionals));
+    return monad::construct<message>(
+          *txid
+        , is_response
+        , opcode
+        , rcode
+        , is_authoritative_answer
+        , is_truncated
+        , is_recursion_desired
+        , is_recursion_available
+        , authentic_data
+        , checking_disabled
+        , std::move(edns)
+        , std::move(questions)
+        , std::move(answers)
+        , std::move(authorities)
+        , std::move(additionals)
+        );
   }
 }
