@@ -97,7 +97,7 @@ namespace dns
           case parser_error::no_error:
             return "no error";;
           case parser_error::not_enough_data:
-            return "not enought data";
+            return "not enough data";
           case parser_error::invalid_domain_label_type:
             return "rejected or unsupported label type in domain name";
           case parser_error::too_many_domain_label_pointers:
