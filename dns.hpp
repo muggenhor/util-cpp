@@ -484,7 +484,7 @@ namespace dns
     std::uint16_t txid;
     bool is_response;
     msgopcode opcode;
-    std::error_code rcode;
+    dns::rcode rcode;
     bool is_authoritative_answer;
     bool is_truncated;
     bool is_recursion_desired;

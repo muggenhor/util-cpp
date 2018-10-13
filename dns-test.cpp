@@ -62,8 +62,8 @@ std::error_code process_pkts(InputIterator first, const EndIterator last)
       cout << "txid: " << msg->txid;
       if (msg->is_response)
       {
-        if (msg->rcode)
-          cout << "; status: " << msg->rcode.category().name() << ':' << msg->rcode.message();
+        if (std::error_code err{msg->rcode})
+          cout << "; status: " << err.category().name() << ':' << err.message();
       }
       else
       {
