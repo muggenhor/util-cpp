@@ -23,7 +23,37 @@
 #include "expected.hpp"
 #include <gsl/span>
 #include <iterator>
+#include <system_error>
 #include <utility>
+
+namespace dns
+{
+  enum class parser_error
+  {
+    // zero is reserved as not-error for use with std::error_code
+    no_error = 0,
+
+    not_enough_data,
+    invalid_domain_label_type,
+    too_many_domain_label_pointers,
+    invalid_bitmap_window_size,
+    invalid_data_size,
+    multiple_opt_records,
+  };
+
+  const std::error_category& parser_category() noexcept;
+
+  inline std::error_code make_error_code(parser_error e) noexcept
+  {
+    return std::error_code(static_cast<int>(e), parser_category());
+  }
+}
+
+namespace std
+{
+  template <>
+  struct is_error_code_enum<::dns::parser_error> : public true_type {};
+}
 
 namespace dns
 {

@@ -4,7 +4,7 @@ CPPFLAGS ?= -isystem $(HOME)/git/GSL/include -I..
 CXXFLAGS ?= -Wall -Wextra -Werror -std=c++17 -O3 -ggdb3 -fstack-protector-strong -fsanitize=address,undefined
 
 BIN = parse-test parse-test-afl
-parse_test_SRC = parse-test.cpp parser.cpp
+parse_test_SRC = parse-test.cpp parser.cpp dns.cpp
 DEP = $(parse_test_SRC:.cpp=.d)
 OBJ = $(parse_test_SRC:.cpp=.o) $(parse_test_SRC:.cpp=.afl.o)
 TEST_CASES_BIN = $(patsubst test-cases/%.bm,test-cases-bin/%.bin,$(wildcard test-cases/*.bm))

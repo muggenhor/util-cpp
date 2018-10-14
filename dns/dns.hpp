@@ -330,26 +330,6 @@ namespace dns
     return std::error_code(static_cast<int>(e), rcode_category());
   }
 
-  enum class parser_error
-  {
-    // zero is reserved as not-error for use with std::error_code
-    no_error = 0,
-
-    not_enough_data,
-    invalid_domain_label_type,
-    too_many_domain_label_pointers,
-    invalid_bitmap_window_size,
-    invalid_data_size,
-    multiple_opt_records,
-  };
-
-  const std::error_category& parser_category() noexcept;
-
-  inline std::error_code make_error_code(parser_error e) noexcept
-  {
-    return std::error_code(static_cast<int>(e), parser_category());
-  }
-
   std::ostream& operator<<(std::ostream& os, msgopcode o);
   std::ostream& operator<<(std::ostream& os, rr_type r);
   std::ostream& operator<<(std::ostream& os, rr_class r);
@@ -507,8 +487,6 @@ namespace std
 {
   template <>
   struct is_error_code_enum<::dns::rcode> : public true_type {};
-  template <>
-  struct is_error_code_enum<::dns::parser_error> : public true_type {};
 }
 
 #endif /* INCLUDED_DNS_DNS_HPP */
