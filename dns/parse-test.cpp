@@ -1,4 +1,4 @@
-#include "dns.hpp"
+#include <dns/parser.hpp>
 #include "overload.hpp"
 #include <fstream>
 #include <iomanip>

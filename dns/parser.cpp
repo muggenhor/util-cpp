@@ -1,10 +1,10 @@
+#include "parser.hpp"
 #include <cassert>
 #include <climits>
 #include <cstddef>
 #include <ostream>
 #include <optional>
 #include <system_error>
-#include "dns.hpp"
 #include "monads.hpp"
 
 namespace dns

@@ -16,8 +16,8 @@
  * <https://www.gnu.org/licenses/>.
  */
 
-#ifndef INCLUDED_DNS_HPP
-#define INCLUDED_DNS_HPP
+#ifndef INCLUDED_DNS_DNS_HPP
+#define INCLUDED_DNS_DNS_HPP
 
 #include <chrono>
 #include <cstdint>
@@ -498,6 +498,9 @@ namespace dns
     std::vector<rr>       authority;
     std::vector<rr>       additional;
   };
+
+  template <typename T>
+  using expected = ::util::expected<T, std::error_code>;
 }
 
 namespace std
@@ -508,29 +511,4 @@ namespace std
   struct is_error_code_enum<::dns::parser_error> : public true_type {};
 }
 
-namespace dns
-{
-  template <typename T>
-  using expected = ::util::expected<T, std::error_code>;
-
-  expected<message> parse(gsl::span<const std::uint8_t> frame);
-
-  inline expected<std::pair<message, const std::uint8_t*>>
-    parse(const std::uint8_t* const first, const std::uint8_t* const last)
-  {
-    using ::util::unexpected;
-
-    if (std::distance(first, last) < 2)
-      return unexpected(parser_error::not_enough_data);
-    const std::uint16_t len = *first << 8U | (*std::next(first) & 0xffU);
-    if (std::distance(first, last) < 2 + len)
-      return unexpected(parser_error::not_enough_data);
-    const auto next = std::next(first, 2 + len);
-    if (auto msg = parse(gsl::span{std::next(first, 2), next}); msg)
-      return std::make_pair(std::move(*msg), next);
-    else
-      return unexpected(std::move(msg).error());
-  }
-}
-
-#endif /* INCLUDED_DNS_HPP */
+#endif /* INCLUDED_DNS_DNS_HPP */
