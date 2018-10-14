@@ -20,6 +20,7 @@
 #define INCLUDED_MONADS_HPP
 
 #include <functional>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
@@ -144,6 +145,37 @@ namespace monad
       noexcept(noexcept(map(detail::do_construct<T, std::is_constructible_v<T, Args...>>(), std::forward<Args>(args)...)))
   {
     return map(detail::do_construct<T, std::is_constructible_v<T, Args...>>(), std::forward<Args>(args)...);
+  }
+
+  namespace detail
+  {
+    template <typename V, typename F>
+    constexpr auto sequence_helper(const V& v, F&& f)
+    {
+      return std::make_tuple(transform(v, [&f](auto&&) { return std::invoke(std::forward<F>(f)); }));
+    }
+
+    template <typename V, typename F, typename... Fs>
+    constexpr auto sequence_helper(const V& v, F&& f, Fs&&... fs)
+    {
+      auto r  = transform(v, [&f](auto&&) { return std::invoke(std::forward<F>(f)); });
+      auto rs = sequence_helper(r, std::forward<Fs>(fs)...);
+      return std::tuple_cat(std::make_tuple(std::move(r)), std::move(rs));
+    }
+  }
+
+  template <typename F>
+  constexpr auto sequence(F&& f) noexcept(noexcept(std::make_tuple(map(std::forward<F>(f)))))
+  {
+    return std::make_tuple(map(std::forward<F>(f)));
+  }
+
+  template <typename F, typename... Fs>
+  constexpr auto sequence(F&& f, Fs&&... fs)
+  {
+    auto r  = std::invoke(std::forward<F>(f));
+    auto rs = detail::sequence_helper(r, std::forward<Fs>(fs)...);
+    return std::tuple_cat(std::make_tuple(std::move(r)), std::move(rs));
   }
 }
 

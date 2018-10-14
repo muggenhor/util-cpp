@@ -684,20 +684,24 @@ namespace dns
     const bool authentic_data          = (*flags >>  5) & 0x1;
     const bool checking_disabled       = (*flags >>  4) & 0x1;
 
-    auto questions = monad::collect<std::vector<question>>(*question_count,
-        [frame, &cur]() {
-        auto name    = consume_domain_name(frame, cur);
-        auto rdtype  = monad::construct<rr_type>(consume_u16(cur));
-        auto rrclass = monad::construct<rr_class>(consume_u16(cur));
-        return monad::construct<question>(std::move(name), rdtype, rrclass);
-      });
-
-    auto answers = monad::collect<std::vector<rr>>(*answer_count,
-        [rcode, frame, &cur] { return consume_rr(rcode, frame, cur); });
-    auto authorities = monad::collect<std::vector<rr>>(*authority_count,
-        [rcode, frame, &cur] { return consume_rr(rcode, frame, cur); });
-    auto additionals = monad::collect<std::vector<rr>>(*additional_count,
-        [rcode, frame, &cur] { return consume_rr(rcode, frame, cur); });
+    auto [questions, answers, authorities, additionals] = monad::sequence(
+        [&] { return monad::collect<std::vector<question>>(*question_count,
+          [&] {
+            auto name    = consume_domain_name(frame, cur);
+            auto rdtype  = monad::construct<rr_type>(consume_u16(cur));
+            auto rrclass = monad::construct<rr_class>(consume_u16(cur));
+            return monad::construct<question>(std::move(name), rdtype, rrclass);
+          });
+        },
+        [&] { return monad::collect<std::vector<rr>>(*answer_count,
+          [&] { return consume_rr(rcode, frame, cur); });
+        },
+        [&] { return monad::collect<std::vector<rr>>(*authority_count,
+          [&] { return consume_rr(rcode, frame, cur); });
+        },
+        [&] { return monad::collect<std::vector<rr>>(*additional_count,
+          [&] { return consume_rr(rcode, frame, cur); });
+        });
 
     auto edns = monad::transform(additionals,
       [&rcode](const auto& additionals) -> expected<std::optional<opt_rdata>> {
