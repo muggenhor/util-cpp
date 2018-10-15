@@ -39,19 +39,19 @@ std::error_code process_pkts(InputIterator first, const EndIterator last)
       cout << "\x1B[31m" "couldn't read length: too little data" "\x1B[39m\n";
       return make_error_code(dns::parser_error::not_enough_data);
     }
-    else
+
+    cout << "frame len: " << *length << '\n';
+    frame.reserve(*length);
+    for (unsigned i = 0; length && i < *length; ++i)
     {
-      cout << "frame len: " << *length << '\n';
-      for (unsigned i = 0; length && i < *length; ++i)
+      if (first == last)
       {
-        if (first == last)
-        {
-          cout << "\x1B[31m" "less octets available than specified frame length" "\x1B[39m: " << frame.size() << '\n';
-          return make_error_code(dns::parser_error::not_enough_data);
-        }
-        frame.push_back(*first++);
+        cout << "\x1B[31m" "less octets available than specified frame length" "\x1B[39m: " << frame.size() << '\n';
+        return make_error_code(dns::parser_error::not_enough_data);
       }
+      frame.push_back(*first++);
     }
+
     if (auto msg = dns::parse(frame); msg)
     {
       const auto print_name = [] (const dns::name& labels) {
