@@ -30,12 +30,14 @@ void perform_request(const gsl::span<std::uint8_t> buf, std::string_view name, d
   if (fd == -1)
     throw std::system_error(errno, std::system_category(), "creating UDP socket");
 
+#if defined(TCP_FASTOPEN_CONNECT)
   if constexpr (is_tcp)
   {
     const int optval = 1;
     if (setsockopt(fd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, &optval, sizeof(optval)) == -1)
-      throw std::system_error(errno, std::system_category(), "enabling TCP Fast Open");
+      std::cerr << "Failed to enable TCP Fast Open on connect(): " << std::system_category().message(errno) << '\n';
   }
+#endif
 
   if (connect(fd, reinterpret_cast<const sockaddr*>(&dst), sizeof(dst)) == -1)
     throw std::system_error(errno, std::system_category(), "connecting to recursive DNS resolver");
