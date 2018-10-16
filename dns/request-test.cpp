@@ -1,5 +1,6 @@
 #include <dns/serializer.hpp>
 #include <iostream>
+#include <type_traits>
 #include <utility>
 
 #include <arpa/inet.h>
@@ -19,14 +20,23 @@ void perform_request(const gsl::span<std::uint8_t> buf, std::string_view name, d
   if (!msg)
     throw std::system_error(msg.error(), "failed to create DNS request");
 
+#if 0
+  const sockaddr_in6 dst = {
+    AF_INET6,
+    htons(53),
+    0,
+    IN6ADDR_LOOPBACK_INIT,
+  };
+#else
   const sockaddr_in dst = {
     AF_INET,
     htons(53),
     inet_addr("127.0.0.53"),
   };
+#endif
 
   constexpr bool is_tcp = true;
-  const int fd = socket(AF_INET, is_tcp ? SOCK_STREAM : SOCK_DGRAM, 0);
+  const int fd = socket(std::is_same_v<std::decay_t<decltype(dst)>, sockaddr_in6> ? AF_INET6 : AF_INET, is_tcp ? SOCK_STREAM : SOCK_DGRAM, 0);
   if (fd == -1)
     throw std::system_error(errno, std::system_category(), "creating UDP socket");
 
@@ -53,7 +63,7 @@ void perform_request(const gsl::span<std::uint8_t> buf, std::string_view name, d
       { const_cast<std::uint8_t*>(msg->data()), static_cast<size_t>(msg->size()) },
     };
     const msghdr hdr {
-      const_cast<sockaddr_in*>(&dst),
+      const_cast<std::decay_t<decltype(dst)>*>(&dst),
       sizeof(dst),
       const_cast<iovec*>(iov),
       sizeof(iov) / sizeof(iov[0]),
