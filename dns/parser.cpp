@@ -598,6 +598,14 @@ namespace dns
           return monad::construct<nsec3_rdata>(
               hash_algo, opt_out, iterations, salt, next_hashed_name, std::move(types));
         }
+	case rr_type::TLSA:
+	{
+          const auto cert_usage     = consume_u8(rdata_frame);
+          const auto selector       = consume_u8(rdata_frame);
+          const auto matching_type  = consume_u8(rdata_frame);
+          return monad::construct<tlsa_rdata>(
+              cert_usage, selector, matching_type, consume_subspan(rdata_frame));
+	}
         case rr_type::A:
         {
           if (rdata_frame.size() != decltype(a_rdata::addr)::extent)

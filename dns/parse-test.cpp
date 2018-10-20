@@ -242,6 +242,23 @@ std::error_code process_pkts(InputIterator first, const EndIterator last)
                 for (const auto type : nsec.types)
                   cout << ' ' << type;
               },
+              [](const dns::tlsa_rdata& tlsa) {
+                const auto fill  = cout.fill();
+                const auto flags = cout.flags();
+
+                cout << std::dec
+                  << ' ' << static_cast<unsigned>(tlsa.cert_usage)
+                  << ' ' << static_cast<unsigned>(tlsa.selector)
+                  << ' ' << static_cast<unsigned>(tlsa.matching_type)
+                  << ' ' << std::hex << std::setfill('0')
+                  ;
+
+                for (const unsigned octet : tlsa.association_data)
+                  cout << std::setw(2) << octet;
+
+                cout.fill(fill);
+                cout.flags(flags);
+              },
               [](const dns::opt_rdata& opt) {
                 const auto fill  = cout.fill();
                 const auto flags = cout.flags();

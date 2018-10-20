@@ -424,6 +424,14 @@ namespace dns
     gsl::span<const std::uint8_t> public_key;
   };
 
+  struct tlsa_rdata
+  {
+    std::uint8_t                  cert_usage;
+    std::uint8_t                  selector;
+    std::uint8_t                  matching_type;
+    gsl::span<const std::uint8_t> association_data;
+  };
+
   using edns_options = std::unordered_map<option_code, gsl::span<const std::uint8_t>>;
 
   struct opt_rdata
@@ -452,6 +460,7 @@ namespace dns
       , nsec3_rdata
       , ds_rdata
       , dnskey_rdata
+      , tlsa_rdata
       , a_rdata
       , aaaa_rdata
       , name                           
