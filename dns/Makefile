@@ -3,11 +3,12 @@ CXX ?= g++
 CPPFLAGS ?= -isystem $(HOME)/git/GSL/include -I..
 CXXFLAGS ?= -Wall -Wextra -Werror -Wno-missing-field-initializers -std=c++17 -O3 -ggdb3 -fstack-protector-strong -fsanitize=address,undefined
 
-BIN = parse-test parse-test-afl request-test
+BIN = parse-test parse-test-afl request-test fastopen-tls-1.3-early-data-test
 parse_test_SRC = parse-test.cpp parser.cpp dns.cpp
 request_test_SRC = request-test.cpp serializer.cpp dns.cpp
-DEP = $(parse_test_SRC:.cpp=.d) $(request_test_SRC:.cpp=.d)
-OBJ = $(parse_test_SRC:.cpp=.o) $(parse_test_SRC:.cpp=.afl.o) $(request_test_SRC:.cpp=.o)
+fast_secure_test_SRC = fastopen-tls-1.3-early-data-test.cpp dns.cpp parser.cpp serializer.cpp
+DEP = $(parse_test_SRC:.cpp=.d) $(request_test_SRC:.cpp=.d) $(fast_secure_test_SRC:.cpp=.d)
+OBJ = $(parse_test_SRC:.cpp=.o) $(parse_test_SRC:.cpp=.afl.o) $(request_test_SRC:.cpp=.o) $(fast_secure_test_SRC:.cpp=.o)
 TEST_CASES_BIN = $(patsubst test-cases/%.bm,test-cases-bin/%.bin,$(wildcard test-cases/*.bm))
 
 all: $(BIN) $(TEST_CASES_BIN)
@@ -26,6 +27,9 @@ test-cases-bin:
 
 test-cases-bin/%.bin: test-cases/%.bm test-cases-bin
 	binmake $< $@
+
+fastopen-tls-1.3-early-data-test: $(fast_secure_test_SRC:.cpp=.o)
+	$(CXX) $(CXXFLAGS) -o $@ $^ -lboost_system -lssl -lcrypto
 
 request-test: $(request_test_SRC:.cpp=.o)
 	$(CXX) $(CXXFLAGS) -o $@ $^ -lboost_system -pthread
