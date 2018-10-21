@@ -674,27 +674,27 @@ namespace util
     }
 
     template <typename F>
-    constexpr auto map(F&& f) & noexcept(noexcept(monad::transform(std::declval<expected&>(), std::forward<F>(f))))
+    constexpr auto map(F&& f) & noexcept(noexcept(monad::map(std::forward<F>(f), std::declval<expected&>())))
     {
-      return monad::transform(*this, std::forward<F>(f));
+      return monad::map(std::forward<F>(f), *this);
     }
 
     template <typename F>
-    constexpr auto map(F&& f) const & noexcept(noexcept(monad::transform(std::declval<const expected&>(), std::forward<F>(f))))
+    constexpr auto map(F&& f) const & noexcept(noexcept(monad::map(std::forward<F>(f), std::declval<const expected&>())))
     {
-      return monad::transform(*this, std::forward<F>(f));
+      return monad::map(std::forward<F>(f), *this);
     }
 
     template <typename F>
-    constexpr auto map(F&& f) && noexcept(noexcept(monad::transform(std::declval<expected&&>(), std::forward<F>(f))))
+    constexpr auto map(F&& f) && noexcept(noexcept(monad::map(std::forward<F>(f), std::declval<expected&&>())))
     {
-      return monad::transform(std::move(*this), std::forward<F>(f));
+      return monad::map(std::forward<F>(f), std::move(*this));
     }
 
     template <typename F>
-    constexpr auto map(F&& f) const && noexcept(noexcept(monad::transform(std::declval<const expected&&>(), std::forward<F>(f))))
+    constexpr auto map(F&& f) const && noexcept(noexcept(monad::map(std::forward<F>(f), std::declval<const expected&&>())))
     {
-      return monad::transform(std::move(*this), std::forward<F>(f));
+      return monad::map(std::forward<F>(f), std::move(*this));
     }
 
     friend void swap(expected& lhs, expected& rhs) noexcept(noexcept(lhs.swap(rhs)))
@@ -934,27 +934,27 @@ namespace util
     }
 
     template <typename F>
-    constexpr auto map(F&& f) & noexcept(noexcept(monad::transform(std::declval<expected&>(), std::forward<F>(f))))
+    constexpr auto map(F&& f) & noexcept(noexcept(monad::map(std::forward<F>(f), std::declval<expected&>())))
     {
-      return monad::transform(*this, std::forward<F>(f));
+      return monad::map(std::forward<F>(f), *this);
     }
 
     template <typename F>
-    constexpr auto map(F&& f) const & noexcept(noexcept(monad::transform(std::declval<const expected&>(), std::forward<F>(f))))
+    constexpr auto map(F&& f) const & noexcept(noexcept(monad::map(std::forward<F>(f), std::declval<const expected&>())))
     {
-      return monad::transform(*this, std::forward<F>(f));
+      return monad::map(std::forward<F>(f), *this);
     }
 
     template <typename F>
-    constexpr auto map(F&& f) && noexcept(noexcept(monad::transform(std::declval<expected&&>(), std::forward<F>(f))))
+    constexpr auto map(F&& f) && noexcept(noexcept(monad::map(std::forward<F>(f), std::declval<expected&&>())))
     {
-      return monad::transform(std::move(*this), std::forward<F>(f));
+      return monad::map(std::forward<F>(f), std::move(*this));
     }
 
     template <typename F>
-    constexpr auto map(F&& f) const && noexcept(noexcept(monad::transform(std::declval<const expected&&>(), std::forward<F>(f))))
+    constexpr auto map(F&& f) const && noexcept(noexcept(monad::map(std::forward<F>(f), std::declval<const expected&&>())))
     {
-      return monad::transform(std::move(*this), std::forward<F>(f));
+      return monad::map(std::forward<F>(f), std::move(*this));
     }
 
     friend void swap(expected& lhs, expected& rhs) noexcept(noexcept(lhs.swap(rhs)))
