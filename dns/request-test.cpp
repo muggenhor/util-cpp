@@ -1,15 +1,35 @@
+#include <array>
+#include <boost/asio/buffer.hpp>
+#include <boost/asio/io_service.hpp>
+#include <boost/asio/ip/address_v4.hpp>
+#include <boost/asio/ip/address_v6.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/read.hpp>
 #include <dns/serializer.hpp>
 #include <iostream>
+#include <system_error>
 #include <type_traits>
 #include <utility>
 
-#include <arpa/inet.h>
-#include <cerrno>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <system_error>
-#include <sys/types.h>
-#include <sys/socket.h>
+#if defined(TCP_FASTOPEN_CONNECT)
+class tcp_fastopen_connect
+{
+public:
+  template <typename T> constexpr       int   level(T&&) const noexcept { return IPPROTO_TCP         ; }
+  template <typename T> constexpr       int   name (T&&) const noexcept { return TCP_FASTOPEN_CONNECT; }
+  template <typename T> constexpr const int*  data (T&&) const noexcept { return &val; }
+  template <typename T> constexpr std::size_t size (T&&) const noexcept { return sizeof(val); }
+
+  constexpr explicit tcp_fastopen_connect(bool v) noexcept
+    : val(v ? 1 : 0)
+  {}
+
+  explicit constexpr operator bool() const noexcept { return static_cast<bool>(val); }
+
+private:
+  int val;
+};
+#endif
 
 void perform_request(const gsl::span<std::uint8_t> buf, std::string_view name, dns::rr_type rdtype, dns::rr_class rdclass = dns::rr_class::IN)
 {
@@ -20,37 +40,29 @@ void perform_request(const gsl::span<std::uint8_t> buf, std::string_view name, d
   if (!msg)
     throw std::system_error(msg.error(), "failed to create DNS request");
 
+  using protocol = boost::asio::ip::tcp;
 #if 0
-  const sockaddr_in6 dst = {
-    AF_INET6,
-    htons(53),
-    0,
-    IN6ADDR_LOOPBACK_INIT,
-  };
+  const protocol::endpoing dst(
+      boost::asio::ip::address_v6::loopback()
+    , 53
+    );
 #else
-  const sockaddr_in dst = {
-    AF_INET,
-    htons(53),
-    inet_addr("127.0.0.53"),
-  };
+  const protocol::endpoint dst(
+      boost::asio::ip::address_v4::from_string("127.0.0.53")
+    , 53
+    );
 #endif
 
-  constexpr bool is_tcp = true;
-  const int fd = socket(std::is_same_v<std::decay_t<decltype(dst)>, sockaddr_in6> ? AF_INET6 : AF_INET, is_tcp ? SOCK_STREAM : SOCK_DGRAM, 0);
-  if (fd == -1)
-    throw std::system_error(errno, std::system_category(), "creating UDP socket");
+  boost::asio::io_service io;
+  protocol::socket sock(io, dst.protocol());
 
+  constexpr bool is_tcp = std::is_same_v<protocol, boost::asio::ip::tcp>;
 #if defined(TCP_FASTOPEN_CONNECT)
   if constexpr (is_tcp)
-  {
-    const int optval = 1;
-    if (setsockopt(fd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT, &optval, sizeof(optval)) == -1)
-      std::cerr << "Failed to enable TCP Fast Open on connect(): " << std::system_category().message(errno) << '\n';
-  }
+    sock.set_option(tcp_fastopen_connect(true));
 #endif
 
-  if (connect(fd, reinterpret_cast<const sockaddr*>(&dst), sizeof(dst)) == -1)
-    throw std::system_error(errno, std::system_category(), "connecting to recursive DNS resolver");
+  sock.connect(dst);
 
   if constexpr (is_tcp)
   {
@@ -58,30 +70,36 @@ void perform_request(const gsl::span<std::uint8_t> buf, std::string_view name, d
       static_cast<std::uint8_t>(msg->size() >> 8),
       static_cast<std::uint8_t>(msg->size() >> 0),
     };
-    const iovec iov[] = {
-      { const_cast<std::uint8_t*>(msg_size), sizeof(msg_size) },
-      { const_cast<std::uint8_t*>(msg->data()), static_cast<size_t>(msg->size()) },
-    };
-    const msghdr hdr {
-      const_cast<std::decay_t<decltype(dst)>*>(&dst),
-      sizeof(dst),
-      const_cast<iovec*>(iov),
-      sizeof(iov) / sizeof(iov[0]),
-    };
-    if (sendmsg(fd, &hdr, 0) == -1)
-      throw std::system_error(errno, std::system_category(), "sending DNS request");
+
+    std::array<boost::asio::const_buffer, 2> iov = {{
+      { msg_size, sizeof(msg_size) },
+      { msg->data(), static_cast<std::size_t>(msg->size()) },
+    }};
+    sock.send(iov);
   }
   else
   {
-    if (send(fd, msg->data(), msg->size(), 0) == -1)
-      throw std::system_error(errno, std::system_category(), "sending DNS request");
+    sock.send(boost::asio::buffer(msg->data(), msg->size()));
   }
 
-  auto reply = [fd, buf, dst] {
-      const auto sz = recv(fd, buf.data(), buf.size(), 0);
-      if (sz == -1)
-        throw std::system_error(errno, std::system_category(), "receiving UDP message");
-      return buf.subspan(0, sz);
+  auto reply = [&sock, buf] {
+      if constexpr (is_tcp)
+      {
+        if (const auto sz = read(sock, boost::asio::buffer(buf.data(), 2));
+            sz != 2)
+          throw std::system_error(make_error_code(std::errc::protocol_error), "couldn't read frame size");
+        const auto reply_size = static_cast<std::uint16_t>(buf[0] << 8 | buf[1]);
+        const auto reply = buf.subspan(0, reply_size + 2);
+        if (const auto sz = read(sock, boost::asio::buffer(reply.data() + 2, reply.size() - 2));
+            sz != reply_size)
+          throw std::system_error(make_error_code(std::errc::protocol_error), "couldn't read full frame");
+        return reply;
+      }
+      else
+      {
+        const auto sz = sock.read_some(boost::asio::buffer(buf.data(), buf.size()));
+        return buf.subspan(0, sz);
+      }
     }();
 
   if constexpr (!is_tcp)
