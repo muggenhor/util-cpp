@@ -697,6 +697,30 @@ namespace util
       return monad::map(std::forward<F>(f), std::move(*this));
     }
 
+    template <typename F>
+    constexpr auto apply(F&& f) & noexcept(noexcept(monad::apply(std::forward<F>(f), std::declval<expected&>())))
+    {
+      return monad::apply(std::forward<F>(f), *this);
+    }
+
+    template <typename F>
+    constexpr auto apply(F&& f) const & noexcept(noexcept(monad::apply(std::forward<F>(f), std::declval<const expected&>())))
+    {
+      return monad::apply(std::forward<F>(f), *this);
+    }
+
+    template <typename F>
+    constexpr auto apply(F&& f) && noexcept(noexcept(monad::apply(std::forward<F>(f), std::declval<expected&&>())))
+    {
+      return monad::apply(std::forward<F>(f), std::move(*this));
+    }
+
+    template <typename F>
+    constexpr auto apply(F&& f) const && noexcept(noexcept(monad::apply(std::forward<F>(f), std::declval<const expected&&>())))
+    {
+      return monad::apply(std::forward<F>(f), std::move(*this));
+    }
+
     friend void swap(expected& lhs, expected& rhs) noexcept(noexcept(lhs.swap(rhs)))
     {
       lhs.swap(rhs);

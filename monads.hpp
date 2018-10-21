@@ -93,6 +93,14 @@ namespace monad
     }
   }
 
+  template <typename F, typename Tuple>
+  constexpr auto apply(F&& f, Tuple&& t)
+  {
+    return map([&f](auto&& t) {
+          return std::apply(std::forward<F>(f), std::forward<decltype(t)>(t));
+        }, std::forward<Tuple>(t));
+  }
+
   template <typename T, typename F>
   constexpr auto transform(T&& v, F&& f)
       noexcept(noexcept(map(std::forward<F>(f), std::forward<T>(v))))
@@ -145,6 +153,14 @@ namespace monad
       noexcept(noexcept(map(detail::do_construct<T, std::is_constructible_v<T, Args...>>(), std::forward<Args>(args)...)))
   {
     return map(detail::do_construct<T, std::is_constructible_v<T, Args...>>(), std::forward<Args>(args)...);
+  }
+
+  template <typename T, typename Tuple>
+  constexpr auto make_from_tuple(Tuple&& t)
+  {
+    return std::apply([] (auto&&... args) {
+        return construct<T>(std::forward<decltype(args)>(args)...);
+      }, std::forward<Tuple>(t));
   }
 
   namespace detail
