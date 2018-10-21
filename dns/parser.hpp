@@ -66,7 +66,7 @@ namespace dns
 
     if (std::distance(first, last) < 2)
       return unexpected(parser_error::not_enough_data);
-    const std::uint16_t len = *first << 8U | (*std::next(first) & 0xffU);
+    const auto len = static_cast<std::uint16_t>(*first << 8U | (*std::next(first) & 0xffU));
     if (std::distance(first, last) < 2 + len)
       return unexpected(parser_error::not_enough_data);
     const auto next = std::next(first, 2 + len);
