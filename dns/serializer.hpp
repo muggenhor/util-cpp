@@ -45,6 +45,7 @@ namespace dns
   expected<std::vector<std::uint8_t>> serialize(const message& msg);
   expected<gsl::span<std::uint8_t>> serialize(const message& msg, gsl::span<std::uint8_t> buf);
 
+  expected<name> make_name(const std::string_view domainname);
   expected<message> make_question(std::string_view name, rr_type rdtype, rr_class rdclass = rr_class::IN);
 }
 

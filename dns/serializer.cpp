@@ -246,21 +246,32 @@ namespace dns
     return payload.buf.subspan(0, i);
   }
 
-  expected<message> make_question(const std::string_view name, rr_type rdtype, rr_class rdclass)
+  expected<name> make_name(const std::string_view domainname)
   {
-    question q;
-    for (std::size_t label_start = 0u; label_start < name.size();)
+    name labels;
+    for (std::size_t label_start = 0u; label_start < domainname.size();)
     {
-      const auto label_end = name.find('.', label_start);
-      const auto label = name.substr(label_start, label_end - label_start);
+      const auto label_end = domainname.find('.', label_start);
+      const auto label = domainname.substr(label_start, label_end - label_start);
       if (label.size() > 0x3fu)
         return unexpected(serializer_error::too_long_domain_name_label);
-      q.labels.push_back(label);
+      labels.push_back(label);
       if (label_end == std::string_view::npos
-       || label_end == name.size() - 1)
+       || label_end == domainname.size() - 1)
         break;
       label_start = label_end + 1;
     }
+
+    return labels;
+  }
+
+  expected<message> make_question(const std::string_view name, rr_type rdtype, rr_class rdclass)
+  {
+    question q;
+    if (auto labels = make_name(name))
+      q.labels = std::move(*labels);
+    else
+      return unexpected(labels.error());
     q.rdtype  = rdtype;
     q.rdclass = rdclass;
 
