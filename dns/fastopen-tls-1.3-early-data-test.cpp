@@ -90,20 +90,19 @@ void perform_request(boost::asio::io_service& io, const char* const dns_server)
 #endif
                 if (const auto* const rr = std::get_if<dns::a_rdata>(&answer.rdata))
                 {
-                  const boost::asio::ip::address_v4::bytes_type addr { rr->addr[0], rr->addr[1], rr->addr[2], rr->addr[3] };
+                  using addr_t = boost::asio::ip::address_v4;
+                  using bytes_t = addr_t::bytes_type;
                   return boost::asio::ip::tcp::endpoint(
-                      boost::asio::ip::address_v4(addr)
+                      addr_t(*reinterpret_cast<const bytes_t*>(rr->addr.data()))
                     , 853
                     );
                 }
                 if (const auto* const rr = std::get_if<dns::aaaa_rdata>(&answer.rdata))
                 {
-                  const boost::asio::ip::address_v6::bytes_type addr {
-                    rr->addr[ 0], rr->addr[ 1], rr->addr[ 2], rr->addr[ 3], rr->addr[ 4], rr->addr[ 5], rr->addr[ 6], rr->addr[ 7],
-                    rr->addr[ 8], rr->addr[ 9], rr->addr[10], rr->addr[11], rr->addr[12], rr->addr[13], rr->addr[14], rr->addr[15],
-                  };
+                  using addr_t = boost::asio::ip::address_v6;
+                  using bytes_t = addr_t::bytes_type;
                   return boost::asio::ip::tcp::endpoint(
-                      boost::asio::ip::address_v6(addr)
+                      addr_t(*reinterpret_cast<const bytes_t*>(rr->addr.data()))
                     , 853
                     );
                 }
