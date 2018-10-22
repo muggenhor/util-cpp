@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <array>
-#include <boost/asio/deadline_timer.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/address_v4.hpp>
 #include <boost/asio/ip/tcp.hpp>
@@ -231,8 +230,6 @@ void perform_request(boost::asio::io_service& io, const char* const dns_server)
   // TODO: do something useful with this
   static_cast<void>(max_early_data);
 
-  boost::asio::deadline_timer timer(io, boost::posix_time::milliseconds(500));
-
   auto request = dns::make_question("mortis.eu"sv, dns::rr_type::TXT)
     .map([&buf](auto&& msg) {
         return dns::serialize(
@@ -276,28 +273,15 @@ void perform_request(boost::asio::io_service& io, const char* const dns_server)
 
                         async_read(socket,
                             boost::asio::buffer(buf + 2, len),
-                            [&socket, &timer, &out, &buf, len] (const auto error, const auto bytes_transferred) {
+                            [&socket, &out, &buf, len] (const auto error, const auto bytes_transferred) {
                               if (error)
                                 throw boost::system::system_error(error, "read");
                               assert(bytes_transferred >= len);
-                              timer.async_wait([&socket, &timer] (const auto error) {
-                                  if (error == boost::asio::error::operation_aborted)
-                                    return;
-                                  else if (error)
-                                    throw boost::system::system_error(error, "timer-wait");
-
-                                  timer.expires_from_now(boost::posix_time::milliseconds(500));
-                                  socket.async_shutdown([&timer] (const auto error) {
-                                      if (error
-                                       && error != boost::asio::error::eof
-                                       && error != boost::asio::ssl::error::stream_truncated)
-                                        throw boost::system::system_error(error, "shutdown");
-
-                                      timer.async_wait([] (const auto error) {
-                                          if (error && error != boost::asio::error::operation_aborted)
-                                            throw boost::system::system_error(error, "timer-final-wait");
-                                        });
-                                    });
+                              socket.async_shutdown([] (const auto error) {
+                                  if (error
+                                   && error != boost::asio::error::eof
+                                   && error != boost::asio::ssl::error::stream_truncated)
+                                    throw boost::system::system_error(error, "shutdown");
                                 });
 
                                 async_write(out, boost::asio::buffer(buf, len + 2),
@@ -324,6 +308,4 @@ int main(const int argc, const char** const argv)
 
   for (int arg = 1; arg < argc; ++arg)
     perform_request(io, argv[arg]);
-
-  usleep(500000);
 }
