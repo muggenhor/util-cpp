@@ -29,7 +29,7 @@ test-cases-bin/%.bin: test-cases/%.bm test-cases-bin
 	binmake $< $@
 
 fastopen-tls-1.3-early-data-test: $(fast_secure_test_SRC:.cpp=.o)
-	$(CXX) $(CXXFLAGS) -o $@ $^ -lboost_system -lssl -lcrypto
+	$(CXX) $(CXXFLAGS) -o $@ $^ -lboost_system -lssl -lcrypto -pthread
 
 request-test: $(request_test_SRC:.cpp=.o)
 	$(CXX) $(CXXFLAGS) -o $@ $^ -lboost_system -pthread
