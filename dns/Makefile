@@ -28,7 +28,7 @@ test-cases-bin/%.bin: test-cases/%.bm test-cases-bin
 	binmake $< $@
 
 request-test: $(request_test_SRC:.cpp=.o)
-	$(CXX) $(CXXFLAGS) -o $@ $^ -lboost_system
+	$(CXX) $(CXXFLAGS) -o $@ $^ -lboost_system -pthread
 
 parse-test: $(parse_test_SRC:.cpp=.o)
 	$(CXX) $(CXXFLAGS) -o $@ $^
