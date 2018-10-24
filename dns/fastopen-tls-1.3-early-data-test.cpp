@@ -159,9 +159,14 @@ void perform_request(boost::asio::io_service& io, const char* const dns_server)
 
   boost::asio::ssl::context ctx(boost::asio::ssl::context::tls_client);
   SSL_CTX_set_min_proto_version(ctx.native_handle(), TLS1_2_VERSION);
+#if OPENSSL_VERSION_NUMBER >= 0x1010100fL
   SSL_CTX_set_max_proto_version(ctx.native_handle(), TLS1_3_VERSION);
+#else
+  SSL_CTX_set_min_proto_version(ctx.native_handle(), TLS1_2_VERSION);
+#endif
   ctx.load_verify_file("/etc/ssl/certs/ca-certificates.crt");
   ctx.set_verify_mode(boost::asio::ssl::verify_peer);
+#if OPENSSL_VERSION_NUMBER >= 0x1010100fL
   SSL_CTX_set_keylog_callback(ctx.native_handle(), [] (const SSL* const, const char* const line) noexcept {
       const char* const fname = std::getenv("SSLKEYLOGFILE");
       if (!fname)
@@ -173,17 +178,36 @@ void perform_request(boost::asio::io_service& io, const char* const dns_server)
       std::fputc('\n', f);
       std::fclose(f);
     });
+#endif
 
   SSL_CTX_set_session_cache_mode(ctx.native_handle(), SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL_STORE);
-  SSL_CTX_sess_set_new_cb(ctx.native_handle(), [] (SSL*, SSL_SESSION* session) noexcept {
-      if (const auto f = BIO_new_file("ssl-session.pem", "w"))
+  static constexpr int EX_SERVER_NAME = 7;
+  SSL_CTX_set_ex_data(ctx.native_handle(), EX_SERVER_NAME, const_cast<char*>(dns_server));
+  const auto session_write_cb = [] (SSL* ssl, SSL_SESSION* session) noexcept {
+      const auto dns_server = reinterpret_cast<const char*>(SSL_CTX_get_ex_data(
+            SSL_get_SSL_CTX(ssl)
+          , EX_SERVER_NAME
+          ));
+      const auto sfn = "ssl-session-"s + dns_server + ".pem";
+      if (const auto f = BIO_new_file(sfn.c_str(), "w"))
       {
         PEM_write_bio_SSL_SESSION(f, session);
+#if OPENSSL_VERSION_NUMBER < 0x1010100fL
+        if (const char* const fname = std::getenv("SSLKEYLOGFILE"))
+        {
+          if (const auto kf = BIO_new_file(fname, "a"))
+          {
+            SSL_SESSION_print_keylog(kf, session);
+            BIO_free(kf);
+          }
+        }
+#endif
         BIO_free(f);
       }
       // 0=no we did not retain a reference to this 'session'
       return 0;
-    });
+    };
+  SSL_CTX_sess_set_new_cb(ctx.native_handle(), session_write_cb);
 
   if (SSL_CTX_dane_enable(ctx.native_handle()) <= 0)
     throw boost::system::system_error(static_cast<int>(::ERR_get_error()), boost::asio::error::get_ssl_category(), "context-dane-enable");
@@ -212,15 +236,18 @@ void perform_request(boost::asio::io_service& io, const char* const dns_server)
   socket.next_layer().open(tgt->protocol());
   socket.next_layer().set_option(tcp_fastopen_connect(true));
 
-  const auto max_early_data = [&socket] {
+  const auto max_early_data = [&socket, &dns_server] {
       std::uint32_t max_early_data = 0;
-      if (const auto f = BIO_new_file("ssl-session.pem", "r"))
+      const auto sfn = "ssl-session-"s + dns_server + ".pem";
+      if (const auto f = BIO_new_file(sfn.c_str(), "r"))
       {
         auto session = PEM_read_bio_SSL_SESSION(f, nullptr, nullptr, nullptr);
         if (session)
         {
           SSL_set_session(socket.native_handle(), session);
+#if OPENSSL_VERSION_NUMBER >= 0x1010100fL
           max_early_data = SSL_SESSION_get_max_early_data(session);
+#endif
           SSL_SESSION_free(session);
         }
         BIO_free(f);
@@ -255,6 +282,9 @@ void perform_request(boost::asio::io_service& io, const char* const dns_server)
           [&] (const auto error) {
             if (error)
               throw boost::system::system_error(error, "handshake");
+#if OPENSSL_VERSION_NUMBER < 0x1010100fL
+            session_write_cb(socket.native_handle(), SSL_get0_session(socket.native_handle()));
+#endif
 
             async_write(socket, boost::asio::buffer(request->data(), request->size()),
                 [&] (const auto error, const auto) {
