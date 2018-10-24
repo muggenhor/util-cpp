@@ -70,10 +70,11 @@ namespace dns
     if (std::distance(first, last) < 2 + len)
       return unexpected(parser_error::not_enough_data);
     const auto next = std::next(first, 2 + len);
-    if (auto msg = parse(gsl::span{std::next(first, 2), next}); msg)
-      return std::make_pair(std::move(*msg), next);
-    else
-      return unexpected(std::move(msg).error());
+    return parse(gsl::span{std::next(first, 2), next})
+      .map(
+        [next] (auto&& msg) {
+          return std::make_pair(std::forward<decltype(msg)>(msg), next);
+        });
   }
 }
 
