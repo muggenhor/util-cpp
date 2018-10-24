@@ -234,7 +234,8 @@ void perform_request(boost::asio::io_service& io, const char* const dns_server)
   }
 
   socket.next_layer().open(tgt->protocol());
-  socket.next_layer().set_option(tcp_fastopen_connect(true));
+  boost::system::error_code ignore_ec;
+  socket.next_layer().set_option(tcp_fastopen_connect(true), ignore_ec);
 
   const auto max_early_data = [&socket, &dns_server] {
       std::uint32_t max_early_data = 0;
