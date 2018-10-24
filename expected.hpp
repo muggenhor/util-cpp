@@ -606,28 +606,28 @@ namespace util
     constexpr const T& value() const&
     {
       if (!has_value())
-        throw std::logic_error();
+        throw std::logic_error("precondition error: doesn't have value");
       return **this;
     }
 
     constexpr T& value() &
     {
       if (!has_value())
-        throw std::logic_error();
+        throw std::logic_error("precondition error: doesn't have value");
       return **this;
     }
 
     constexpr const T&& value() const&&
     {
       if (!has_value())
-        throw std::logic_error();
+        throw std::logic_error("precondition error: doesn't have value");
       return *std::move(*this);
     }
 
     constexpr T&& value() &&
     {
       if (!has_value())
-        throw std::logic_error();
+        throw std::logic_error("precondition error: doesn't have value");
       return *std::move(*this);
     }
 
@@ -658,7 +658,7 @@ namespace util
     template <typename U>
     constexpr T value_or(U&& v) const&
     {
-      if (has_value)
+      if (has_value())
         return **this;
       else
         return static_cast<T>(std::forward<U>(v));
@@ -667,7 +667,7 @@ namespace util
     template <typename U>
     constexpr T value_or(U&& v) &&
     {
-      if (has_value)
+      if (has_value())
         return std::move(**this);
       else
         return static_cast<T>(std::forward<U>(v));
@@ -930,7 +930,7 @@ namespace util
     constexpr void value() const
     {
       if (!has_value())
-        throw std::logic_error();
+        throw std::logic_error("precondition error: doesn't have value");
     }
 
     constexpr const E& error() const&

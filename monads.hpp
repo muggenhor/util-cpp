@@ -67,7 +67,7 @@ namespace monad
   }
 
   template <typename T, typename... Ts>
-  constexpr std::error_code get_error(T&& v, Ts&&... vs) noexcept
+  std::error_code get_error(T&& v, Ts&&... vs) noexcept
   {
     if constexpr (is_monad_v<std::decay_t<T>>)
       if (!has_value(v))
