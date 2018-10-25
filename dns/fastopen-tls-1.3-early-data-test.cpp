@@ -10,6 +10,7 @@
 #include <boost/asio/write.hpp>
 #include <cassert>
 #include <cstdlib>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <iterator>
@@ -21,6 +22,22 @@
 #include "overload.hpp"
 
 #include <unistd.h>
+
+namespace
+{
+#if OPENSSL_VERSION_NUMBER >= 0x1010100fL
+  void append_to_keylog(const SSL*, const char* const line) noexcept
+  {
+    const char* const fname = std::getenv("SSLKEYLOGFILE");
+    if (!fname)
+      return;
+    std::fstream f(fname, std::ios_base::out | std::ios_base::app);
+    if (!f)
+      return;
+    f << line << '\n';
+  }
+#endif
+}
 
 class tcp_fastopen_connect
 {
@@ -167,17 +184,7 @@ void perform_request(boost::asio::io_service& io, const char* const dns_server)
   ctx.load_verify_file("/etc/ssl/certs/ca-certificates.crt");
   ctx.set_verify_mode(boost::asio::ssl::verify_peer);
 #if OPENSSL_VERSION_NUMBER >= 0x1010100fL
-  SSL_CTX_set_keylog_callback(ctx.native_handle(), [] (const SSL* const, const char* const line) noexcept {
-      const char* const fname = std::getenv("SSLKEYLOGFILE");
-      if (!fname)
-        return;
-      std::FILE* const f = std::fopen(fname, "a");
-      if (!f)
-        return;
-      std::fputs(line, f);
-      std::fputc('\n', f);
-      std::fclose(f);
-    });
+  SSL_CTX_set_keylog_callback(ctx.native_handle(), append_to_keylog);
 #endif
 
   SSL_CTX_set_session_cache_mode(ctx.native_handle(), SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL_STORE);
